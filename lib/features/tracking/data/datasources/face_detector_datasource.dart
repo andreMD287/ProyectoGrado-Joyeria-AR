@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../../domain/entities/landmark.dart';
+import 'landmark_detector.dart';
 
 /// Detector facial para aretes, basado en `google_mlkit_face_detection`
 /// (cross-platform). Habilita los landmarks del rostro y entrega —en el orden
@@ -13,13 +14,15 @@ import '../../domain/entities/landmark.dart';
 /// La conversión `CameraImage → InputImage` sigue el patrón oficial de ML Kit y
 /// queda **pendiente de validación en dispositivo** (Android `nv21`, iOS
 /// `bgra8888`, rotación según `sensorOrientation`).
-class FaceDetectorDataSource {
+class FaceDetectorDataSource implements LandmarkDetector {
   final FaceDetector _detector = FaceDetector(
     options: FaceDetectorOptions(enableLandmarks: true),
   );
 
+  @override
   Future<void> initialize() async {}
 
+  @override
   Future<List<Landmark>> detect(
     CameraImage frame,
     int sensorOrientation,
@@ -33,6 +36,7 @@ class FaceDetectorDataSource {
     return _mapFace(faces.first, frame.width, frame.height);
   }
 
+  @override
   Future<void> dispose() async {
     await _detector.close();
   }

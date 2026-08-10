@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../../domain/entities/landmark.dart';
+import 'landmark_detector.dart';
 
 /// Detector de pose para collares, basado en `google_mlkit_pose_detection`
 /// (cross-platform). Extrae los 33 landmarks de pose; para el anclaje del collar
@@ -17,13 +18,15 @@ import '../../domain/entities/landmark.dart';
 /// queda **pendiente de validación en dispositivo** (formato/rotación por
 /// plataforma): en Android conviene configurar la cámara en `nv21`; en iOS,
 /// `bgra8888`.
-class PoseDetectorDataSource {
+class PoseDetectorDataSource implements LandmarkDetector {
   final PoseDetector _detector = PoseDetector(
     options: PoseDetectorOptions(mode: PoseDetectionMode.stream),
   );
 
+  @override
   Future<void> initialize() async {}
 
+  @override
   Future<List<Landmark>> detect(
     CameraImage frame,
     int sensorOrientation,
@@ -37,6 +40,7 @@ class PoseDetectorDataSource {
     return _mapPose(poses.first, frame.width, frame.height);
   }
 
+  @override
   Future<void> dispose() async {
     await _detector.close();
   }
