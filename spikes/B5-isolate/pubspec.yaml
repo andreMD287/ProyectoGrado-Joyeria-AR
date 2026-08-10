@@ -1,0 +1,10 @@
+name: b5_isolate
+description: >-
+  Spike B5 — prototipo de isolate dedicado de detección para elevar los FPS,
+  descargando el trabajo pesado (detect()) del isolate principal (UI).
+  Prueba de concepto en Dart puro, sin dependencias externas.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.11.0

@@ -10,7 +10,12 @@
 /// repositorio de tracking decide, según el detector, si corre en isolate o en
 /// el hilo principal con throttling.
 ///
-/// TODO(B5): implementar el isolate dedicado y medir FPS antes/después.
+/// El spike B5 (`spikes/B5-isolate/`) ya prototipó y midió este patrón: el
+/// isolate dedicado preserva el throughput de detección (~24 FPS) y libera la
+/// UI (0 → ~60 FPS). Aquí se implementará la versión que aloja el detector real
+/// (`hand_landmarker`), recibiendo los bytes del frame por `SendPort`.
+///
+/// TODO(C2/C3): portar `DetectionIsolate` del spike B5 con el detector real.
 class DetectionIsolate {
   const DetectionIsolate();
 }
