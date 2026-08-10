@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "categorias": ["arete", "pulsera", "collar"],
+  "piezas": [
+    {
+      "id": "pulsera-eslabon-01",
+      "nombre": "Pulsera de eslabones clásica",
+      "categoria": "pulsera",
+      "tipo_anclaje": "muneca",
+      "landmark_anclaje": 0,
+      "modelo_glb": "assets/models/pulsera-eslabon-01.glb",
+      "foto": "assets/catalog/fotos/pulsera-eslabon-01.jpg",
+      "dimensiones_mm": { "alto": 8, "ancho": 180, "profundidad": 4, "diametro": 60 },
+      "material": "plata 925",
+      "descripcion": "Pulsera de eslabones, cierre de mosquetón.",
+      "estado": "pendiente",
+      "notas_material": ""
+    },
+    {
+      "id": "arete-gota-01",
+      "nombre": "Arete gota con circón",
+      "categoria": "arete",
+      "tipo_anclaje": "lobulo",
+      "landmark_anclaje": null,
+      "modelo_glb": "assets/models/arete-gota-01.glb",
+      "foto": "assets/catalog/fotos/arete-gota-01.jpg",
+      "dimensiones_mm": { "alto": 22, "ancho": 8, "profundidad": 6 },
+      "material": "plata 925 con circón",
+      "descripcion": "Arete colgante en forma de gota.",
+      "estado": "pendiente",
+      "notas_material": "Circón aproximado con material opaco especular (ver D1)."
+    },
+    {
+      "id": "collar-cadena-01",
+      "nombre": "Collar cadena fina con dije",
+      "categoria": "collar",
+      "tipo_anclaje": "cuello",
+      "landmark_anclaje": [11, 12],
+      "modelo_glb": "assets/models/collar-cadena-01.glb",
+      "foto": "assets/catalog/fotos/collar-cadena-01.jpg",
+      "dimensiones_mm": { "alto": 15, "ancho": 12, "profundidad": 3, "longitud": 420 },
+      "material": "oro 18k",
+      "descripcion": "Collar de cadena fina con dije central.",
+      "estado": "pendiente",
+      "notas_material": ""
+    }
+  ]
+}

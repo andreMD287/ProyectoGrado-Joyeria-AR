@@ -1,17 +1,83 @@
-# Código de referencia local (MVP). NO se sube a GitHub: es solo para consulta.
+# ─────────────────────────────────────────────────────────────
+# Código de referencia local (validación técnica previa / MVP).
+# NO se sube a GitHub: es solo para consulta local.
 mvp-reference/
+.gitignore.bak
 
-# Sistema operativo / editores
+# ─────────────────────────────────────────────────────────────
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+**/doc/api/
+**/*.g.dart.lock
+.metadata.tmp
+
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
 .DS_Store
-Thumbs.db
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# ─────────────────────────────────────────────────────────────
+# IDE / editores
 .idea/
 .vscode/
 *.iml
+*.ipr
+*.iws
 
-# Dart / Flutter (para cuando exista el proyecto)
-.dart_tool/
-.packages
-build/
-.flutter-plugins
-.flutter-plugins-dependencies
-pubspec.lock
+# ─────────────────────────────────────────────────────────────
+# Android
+**/android/**/gradle-wrapper.jar
+**/android/.gradle
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+*.jks
+*.keystore
+
+# ─────────────────────────────────────────────────────────────
+# iOS / macOS
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vagrant/
+**/ios/**/DerivedData/
+**/ios/**/Icon?
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/profile
+**/ios/**/xcuserdata
+**/ios/.generated/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# ─────────────────────────────────────────────────────────────
+# Nota: pubspec.lock SÍ se versiona (es una app, no una librería).
