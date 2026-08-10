@@ -6,13 +6,24 @@ import '../entities/anchor_pose.dart';
 import '../entities/landmark.dart';
 import 'tracking_strategy.dart';
 
-/// Collares: ancla en el punto medio entre los hombros (landmarks 11 y 12 de
-/// MediaPipe/ML Kit Pose). Ver spike B2.
+/// Collares: ancla bajo la línea de hombros (landmarks 11 y 12 de
+/// MediaPipe/ML Kit Pose). Validado en el spike B2.
+///
+/// El anclaje es el punto medio entre los hombros desplazado hacia abajo una
+/// fracción [neckDropFactor] del ancho de hombros (el collar reposa sobre el
+/// pecho); la inclinación (`roll`) se toma de la línea de hombros. Devuelve
+/// `null` si la confianza de algún hombro es menor a [minConfidence].
 class NecklaceStrategy implements TrackingStrategy {
   static const int leftShoulder = 11;
   static const int rightShoulder = 12;
 
-  const NecklaceStrategy();
+  final double minConfidence;
+  final double neckDropFactor;
+
+  const NecklaceStrategy({
+    this.minConfidence = 0.5,
+    this.neckDropFactor = 0.2,
+  });
 
   @override
   JewelryCategory get category => JewelryCategory.necklace;
@@ -25,11 +36,23 @@ class NecklaceStrategy implements TrackingStrategy {
     if (landmarks.length <= rightShoulder) return null;
     final l = landmarks[leftShoulder];
     final r = landmarks[rightShoulder];
-    final mid = Vec3((l.x + r.x) / 2, (l.y + r.y) / 2, (l.z + r.z) / 2);
-    // Inclinación de la línea de hombros → orientación del collar.
-    final roll = math.atan2(r.y - l.y, r.x - l.x);
-    final confidence =
-        math.min(l.visibility ?? 1.0, r.visibility ?? 1.0).toDouble();
-    return AnchorPose(position: mid, rollRadians: roll, confidence: confidence);
+    final lv = l.visibility ?? 1.0;
+    final rv = r.visibility ?? 1.0;
+    if (lv < minConfidence || rv < minConfidence) return null;
+
+    final midX = (l.x + r.x) / 2;
+    final midY = (l.y + r.y) / 2;
+    final midZ = (l.z + r.z) / 2;
+    final dx = r.x - l.x;
+    final dy = r.y - l.y;
+    final width = math.sqrt(dx * dx + dy * dy);
+    final anchorY = midY + neckDropFactor * width;
+    final roll = math.atan2(dy, dx);
+
+    return AnchorPose(
+      position: Vec3(midX, anchorY, midZ),
+      rollRadians: roll,
+      confidence: math.min(lv, rv),
+    );
   }
 }
