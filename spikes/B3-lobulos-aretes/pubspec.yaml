@@ -1,0 +1,10 @@
+name: b3_lobulos_aretes
+description: >-
+  Spike B3 — estimación del punto de anclaje del arete (lóbulo) a partir de los
+  landmarks de rostro. Prueba de concepto de la geometría de anclaje en Dart
+  puro, sin dependencias externas.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.11.0
