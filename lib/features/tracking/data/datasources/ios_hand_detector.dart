@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/platform/platform_channels.dart';
 import '../../domain/entities/landmark.dart';
-import 'hand_detector.dart';
+import 'landmark_detector.dart';
 
 /// Detector de manos en iOS. `hand_landmarker` no soporta iOS (usa JNI), por lo
 /// que aquí se consume una implementación nativa vía platform channel
@@ -18,7 +18,7 @@ import 'hand_detector.dart';
 ///
 /// La implementación nativa (Swift) y su registro están en
 /// `spikes/B1-ios-hand-tracking/`. Pendiente de validación en un iPhone físico.
-class IosHandDetector implements HandDetector {
+class IosHandDetector implements LandmarkDetector {
   static const MethodChannel _channel =
       MethodChannel(PlatformChannels.iosHandTracking);
 
