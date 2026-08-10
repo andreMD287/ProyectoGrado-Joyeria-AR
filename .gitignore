@@ -1,0 +1,17 @@
+# Código de referencia local (MVP). NO se sube a GitHub: es solo para consulta.
+mvp-reference/
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# Dart / Flutter (para cuando exista el proyecto)
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
