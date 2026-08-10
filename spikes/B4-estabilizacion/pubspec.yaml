@@ -1,0 +1,10 @@
+name: b4_estabilizacion
+description: >-
+  Spike B4 — comparación de filtros de estabilización (One Euro Filter vs.
+  Kalman de velocidad constante) para las coordenadas de landmarks de tracking.
+  Prueba de concepto en Dart puro, sin dependencias externas.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.11.0
