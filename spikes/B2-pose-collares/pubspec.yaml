@@ -1,0 +1,10 @@
+name: b2_pose_collares
+description: >-
+  Spike B2 — estimación del punto de anclaje de un collar a partir de los
+  landmarks de pose (hombros 11/12). Prueba de concepto de la geometría de
+  anclaje en Dart puro, sin dependencias externas.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.11.0
