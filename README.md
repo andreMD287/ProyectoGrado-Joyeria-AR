@@ -4,6 +4,13 @@ Aplicación Flutter para probar virtualmente piezas de joyería (**aretes, pulse
 
 Repositorio oficial del proyecto de grado (Grupo 7, 2026).
 
+## Equipo
+
+- Valentina Carreño
+- Juan Garzón
+- José Ontiveros
+- André Landinez
+
 ## Plataformas
 
 - **Android** 9.0 (API 28)+ con soporte ARCore.
