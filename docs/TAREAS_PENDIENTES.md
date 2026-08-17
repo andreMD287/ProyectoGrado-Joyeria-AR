@@ -98,7 +98,7 @@ Registrar los dispositivos móviles disponibles entre los cuatro integrantes: mo
 **Criterio de cierre:** existe una tabla de dispositivos disponibles, incorporada a este documento o al README.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-10): 🟡 Parcial.** Se creó la plantilla `docs/A3_INVENTARIO_DISPOSITIVOS.md` con los requisitos verificables, los enlaces a las listas oficiales de ARCore/ARKit y la tabla lista para llenar. **Falta** que cada integrante complete su fila con sus datos reales. **Sirve para** conocer la capacidad de hardware del equipo antes de los sprints.
+> **Estado (2026-08-17): 🟡 1 de 4 filas completa.** André Landinez completó su fila (Samsung Galaxy A15 / SM-A155M, Android 16, **sin** ARCore). De paso se corrigió un supuesto incorrecto del documento: ARCore no es requisito real del dispositivo Android de pruebas, ya que la prueba virtual (aretes/pulseras/collares) no lo usa — se confirmó funcionando de punta a punta en ese mismo dispositivo sin ARCore. **Falta** que Valentina Carreño, Juan Garzón y José Ontiveros completen sus filas. **Sirve para** conocer la capacidad de hardware del equipo antes de los sprints.
  
 #### A4 — Verificación cruzada de entornos
 **Prioridad:** Alta · **Esfuerzo:** S–M (2–4 h por persona) · **Tipo:** Técnica · **Dependencias:** A1, A2
@@ -364,7 +364,7 @@ No se establecen asignaciones fijas. Cada integrante selecciona tareas según su
 |---|---|
 | A1 — Fix `Flutter.h` (MacBook Air) | ⏳ Pendiente |
 | A2 — Unificación `minSdk` | ✅ Hecho |
-| A3 — Inventario de dispositivos | 🟡 Plantilla lista (falta llenar) |
+| A3 — Inventario de dispositivos | 🟡 1 de 4 filas completa |
 | A4 — Verificación cruzada de entornos | ⏳ Pendiente |
 | B1 — Tracking de manos en iOS | 🟡 Análisis + andamiaje (POC en iPhone pendiente) |
 | B2 — Pose para collares | ✅ Funcional en dispositivo (falta protocolo de precisión completo) |

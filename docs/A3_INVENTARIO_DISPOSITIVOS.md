@@ -1,7 +1,7 @@
 # A3 — Inventario de dispositivos del equipo
 
 **Frente:** A — Entorno de desarrollo · **Prioridad:** Alta · **Dependencias:** ninguna
-**Estado:** Plantilla — pendiente de completar por cada integrante · **Última actualización:** 2026-08-09
+**Estado:** 🟡 En progreso — 1 de 4 filas completa (André Landinez) · **Última actualización:** 2026-08-17
 
 > Documento interno de trabajo. Objetivo: conocer la capacidad real de hardware del equipo (Grupo 7) antes del inicio de los sprints, y confirmar que se dispone de **al menos un dispositivo iOS y uno Android** aptos para desarrollo y pruebas continuas.
 
@@ -9,9 +9,9 @@
 
 ## 1. Requisitos de dispositivo (verdad de terreno)
 
-- **Android:** versión mínima objetivo **Android 9.0 (API 28)** y presencia en la lista oficial de dispositivos con soporte **ARCore**.
-  - Lista oficial ARCore: https://developers.google.com/ar/devices
-  - (Nota: la validación técnica previa usó `minSdk 24`, exigido por ARCore; la unificación del `minSdk` definitivo se resuelve en la tarea **A2**.)
+- **Android:** versión mínima objetivo **Android 9.0 (API 28)**. **ARCore no es requisito**: la prueba virtual (aretes, pulseras, collares) usa cámara + ML Kit/MediaPipe y se validó funcionando en un dispositivo **sin** soporte ARCore (ver §3). ARCore solo haría falta para un visor de colocación en superficie que todavía no está implementado; si se retoma esa función, ahí sí aplicaría la lista oficial.
+  - Lista oficial ARCore (solo relevante si se retoma el visor de superficie): https://developers.google.com/ar/devices
+  - (Nota: la validación técnica previa usó `minSdk 24`, heredado del requisito de ARCore; el `minSdk` definitivo (28) se fijó en la tarea **A2**.)
 - **iOS:** versión mínima objetivo **iOS 16.0** y soporte **ARKit** (dispositivo físico; ARKit no funciona en simulador).
   - Compatibilidad ARKit / dispositivos: https://developer.apple.com/documentation/arkit y https://support.apple.com/es-co/HT205434
 - Se requiere **dispositivo físico** en ambas plataformas: AR no funciona en emulador/simulador.
@@ -24,7 +24,7 @@
 
 | Integrante | Dispositivo (marca / modelo) | SO y versión | Chipset | ARCore | ARKit | Rol (dev / pruebas) | Plataforma que puede desarrollar |
 |---|---|---|---|---|---|---|---|
-| _(pendiente)_ | | | | | | | |
+| André Landinez | Samsung Galaxy A15 (SM-A155M) | Android 16 (API 36) | _(pendiente de confirmar — variante 4G: MediaTek Helio G99 / variante 5G: Exynos 1330)_ | **No** (confirmado: no está en la lista oficial; el visor de colocación en superficie no corre en este equipo) | — | Dev + pruebas | Android |
 | _(pendiente)_ | | | | | | | |
 | _(pendiente)_ | | | | | | | |
 | _(pendiente)_ | | | | | | | |
@@ -45,7 +45,7 @@
 Extraído del repositorio de validación técnica; **debe confirmarse** con los equipos reales:
 
 - Existe **al menos un entorno iOS operativo** (Mac Mini): compila y ejecuta en **iPhone físico** en modo debug.
-- Existe **al menos un dispositivo Android apto**: el tracking de muñeca (MediaPipe / `hand_landmarker`) fue **validado en Android**, lo que implica un dispositivo Android con ARCore y cámara funcionando.
+- Existe **al menos un dispositivo Android apto**: las tres categorías (muñeca, lóbulo, hombros) fueron **validadas en Android** en un Samsung Galaxy A15 **sin soporte ARCore** — confirma que ARCore no es requisito real para el dispositivo Android de pruebas (ver §1).
 - **Valentina Carreño** trabaja sobre **MacBook Air** con un fallo de compilación iOS en diagnóstico (tarea A1).
 
 > Estos puntos son indicios, no un inventario. Completar la tabla del §2 con datos verificados por cada integrante.
@@ -54,7 +54,7 @@ Extraído del repositorio de validación técnica; **debe confirmarse** con los 
 
 ## 4. Verificación mínima antes de los sprints
 
-- [ ] Al menos **1 dispositivo Android** en la lista oficial ARCore, con Android ≥ 9.0.
+- [x] Al menos **1 dispositivo Android** con Android ≥ 9.0 y cámara funcional (ARCore no es requisito — ver §1). Confirmado: Samsung Galaxy A15 (André Landinez).
 - [ ] Al menos **1 dispositivo iOS** con soporte ARKit, iOS ≥ 16.0.
 - [ ] Al menos **1 equipo capaz de compilar iOS** (macOS + Xcode) operativo.
 - [ ] Los 4 integrantes saben en qué plataforma pueden desarrollar (enlaza con **A4** — verificación cruzada de entornos).
