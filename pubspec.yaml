@@ -30,6 +30,7 @@ dependencies:
 
   # ── Cámara, permisos, matemática ──
   camera: ^0.11.1
+  camera_platform_interface: ^2.10.0  # reconstruir CameraImage dentro del isolate de detección (B5)
   permission_handler: ^11.4.0
   vector_math: ^2.1.0
 

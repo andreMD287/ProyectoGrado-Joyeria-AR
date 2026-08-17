@@ -4,37 +4,38 @@ import 'package:camera/camera.dart';
 
 import '../../../../core/camera/camera_service.dart';
 import '../../../../core/filters/landmark_stabilizer.dart';
+import '../../../../core/isolate/detection_isolate.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../domain/entities/anchor_pose.dart';
 import '../../domain/repositories/tracking_repository.dart';
 import '../../domain/strategies/tracking_strategy.dart';
-import '../datasources/landmark_detector.dart';
 
 /// Pipeline de tracking en tiempo real:
-/// cámara → detector → estrategia de anclaje → estabilizador → [AnchorPose].
+/// cámara → [DetectionIsolate] → estrategia de anclaje → estabilizador →
+/// [AnchorPose].
 ///
-/// - El **detector** se elige según el `DetectorKind` de la estrategia (manos,
-///   rostro o pose) y la plataforma.
+/// - El **detector** (manos, rostro o pose, según la plataforma) vive dentro
+///   de un isolate dedicado (spike B5): la detección es costosa (15–40 ms de
+///   trabajo nativo por frame) y correrla en el isolate principal saturaba la
+///   UI hasta el punto de producir ANR al cambiar de categoría.
 /// - La **cámara** usa la lente trasera para pulseras (el usuario apunta a su
 ///   muñeca) y la frontal para aretes y collares.
-/// - La detección se limita con throttling (≤10 FPS) para no saturar el isolate
-///   principal; la solución de fondo es el isolate dedicado (spike B5).
+/// - La detección se limita con throttling (≤10 FPS) para no encolar más
+///   peticiones de las que el isolate puede procesar.
 class TrackingRepositoryImpl implements TrackingRepository {
   final CameraService cameraService;
-  final Map<DetectorKind, LandmarkDetector> detectors;
   final Map<JewelryCategory, TrackingStrategy> strategies;
   final LandmarkStabilizer stabilizer;
 
   static const int _minIntervalMs = 100; // ≤10 FPS de detección
 
   StreamController<AnchorPose>? _controller;
-  LandmarkDetector? _activeDetector;
+  DetectionIsolate? _activeIsolate;
   bool _busy = false;
   int _lastMs = 0;
 
   TrackingRepositoryImpl({
     required this.cameraService,
-    required this.detectors,
     required this.strategies,
     LandmarkStabilizer? stabilizer,
   }) : stabilizer = stabilizer ?? OneEuroStabilizer();
@@ -42,8 +43,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
   @override
   Stream<AnchorPose> anchorPoseStream(JewelryCategory category) {
     final strategy = strategies[category];
-    final detector = strategy == null ? null : detectors[strategy.detectorKind];
-    if (strategy == null || detector == null) {
+    if (strategy == null) {
       return const Stream<AnchorPose>.empty();
     }
 
@@ -53,12 +53,13 @@ class TrackingRepositoryImpl implements TrackingRepository {
       try {
         await stop(); // asegura que no quede una sesión previa a medio liberar
         _controller = controller;
-        _activeDetector = detector;
-        await detector.initialize();
+        final isolate = DetectionIsolate();
+        _activeIsolate = isolate;
+        await isolate.start(strategy.detectorKind);
         await cameraService.startStream(
-          (frame) => _onFrame(frame, strategy, detector),
+          (frame) => _onFrame(frame, strategy, isolate),
           lensDirection: _lensFor(category),
-          imageFormatGroup: detector.imageFormatGroup,
+          imageFormatGroup: imageFormatGroupFor(strategy.detectorKind),
         );
       } catch (e) {
         if (!controller.isClosed) controller.addError(e);
@@ -71,7 +72,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
   Future<void> _onFrame(
     CameraImage frame,
     TrackingStrategy strategy,
-    LandmarkDetector detector,
+    DetectionIsolate isolate,
   ) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_busy || now - _lastMs < _minIntervalMs) return;
@@ -80,7 +81,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     try {
       final orientation =
           cameraService.controller?.description.sensorOrientation ?? 0;
-      final landmarks = await detector.detect(frame, orientation);
+      final landmarks = await isolate.detect(frame, orientation);
       final anchor = strategy.computeAnchor(landmarks);
       final controller = _controller;
       if (anchor != null && controller != null && !controller.isClosed) {
@@ -106,8 +107,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
   @override
   Future<void> stop() async {
     await cameraService.dispose();
-    await _activeDetector?.dispose();
-    _activeDetector = null;
+    await _activeIsolate?.dispose();
+    _activeIsolate = null;
     stabilizer.reset();
     final controller = _controller;
     _controller = null;

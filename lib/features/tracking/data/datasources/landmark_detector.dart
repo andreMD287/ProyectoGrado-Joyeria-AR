@@ -12,10 +12,4 @@ abstract interface class LandmarkDetector {
   Future<List<Landmark>> detect(CameraImage frame, int sensorOrientation);
 
   Future<void> dispose();
-
-  /// Formato de imagen de cámara que este detector necesita. Los detectores
-  /// basados en ML Kit (`InputImage.fromBytes`) requieren un solo plano
-  /// (`nv21` en Android, `bgra8888` en iOS); `hand_landmarker` (MediaPipe vía
-  /// JNI) requiere `yuv420`.
-  ImageFormatGroup get imageFormatGroup;
 }
