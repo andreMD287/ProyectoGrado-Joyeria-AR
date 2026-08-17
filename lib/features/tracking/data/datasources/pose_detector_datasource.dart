@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:ui' show Size;
 
 import 'package:camera/camera.dart';
@@ -44,6 +45,10 @@ class PoseDetectorDataSource implements LandmarkDetector {
   Future<void> dispose() async {
     await _detector.close();
   }
+
+  @override
+  ImageFormatGroup get imageFormatGroup =>
+      Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888;
 
   /// Convierte una [Pose] a la lista de [Landmark] normalizados, en el orden del
   /// enum de ML Kit (índice 11 = hombro izquierdo, 12 = hombro derecho).

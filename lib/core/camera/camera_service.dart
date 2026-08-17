@@ -19,6 +19,7 @@ class CameraService {
     void Function(CameraImage frame) onFrame, {
     CameraLensDirection lensDirection = CameraLensDirection.back,
     ResolutionPreset resolution = ResolutionPreset.medium,
+    ImageFormatGroup imageFormatGroup = ImageFormatGroup.yuv420,
   }) async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
@@ -33,7 +34,7 @@ class CameraService {
       camera,
       resolution,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
+      imageFormatGroup: imageFormatGroup,
     );
     await controller.initialize();
     await controller.startImageStream(onFrame);

@@ -48,15 +48,17 @@ class TrackingRepositoryImpl implements TrackingRepository {
     }
 
     final controller = StreamController<AnchorPose>();
-    _controller = controller;
-    _activeDetector = detector;
 
     controller.onListen = () async {
       try {
+        await stop(); // asegura que no quede una sesión previa a medio liberar
+        _controller = controller;
+        _activeDetector = detector;
         await detector.initialize();
         await cameraService.startStream(
           (frame) => _onFrame(frame, strategy, detector),
           lensDirection: _lensFor(category),
+          imageFormatGroup: detector.imageFormatGroup,
         );
       } catch (e) {
         if (!controller.isClosed) controller.addError(e);
