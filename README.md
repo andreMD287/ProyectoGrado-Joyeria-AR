@@ -13,8 +13,12 @@ Repositorio oficial del proyecto de grado (Grupo 7, 2026).
 
 ## Plataformas
 
-- **Android** 9.0 (API 28)+ con soporte ARCore.
-- **iOS** 16.0+ con soporte ARKit (dispositivo físico; la AR no funciona en simulador).
+- **Android** 9.0 (API 28)+. La prueba virtual (aretes, pulseras, collares) usa cámara + ML Kit/MediaPipe y **no requiere ARCore**; corre en cualquier dispositivo Android con cámara, tenga o no soporte ARCore. ARCore solo sería necesario para un visor de colocación en superficie aún no implementado.
+- **iOS** 16.0+ (dispositivo físico; el tracking por cámara no corre en simulador).
+
+## Estado actual
+
+Validado en dispositivo físico Android (sin ARCore): la prueba virtual detecta y ancla en tiempo real las tres categorías (muñeca, lóbulo, hombros) y las renderiza sobre la vista de cámara en vivo, con la detección corriendo en un isolate dedicado para no bloquear la UI. Pendiente: tracking en iOS (andamiaje listo, sin validar en iPhone), modelos GLB reales del catálogo (se usa un modelo de referencia mientras tanto) y el protocolo de precisión de detección en distintas condiciones. El detalle completo, tarea por tarea, está en [`docs/TAREAS_PENDIENTES.md`](docs/TAREAS_PENDIENTES.md).
 
 ## Arquitectura
 
