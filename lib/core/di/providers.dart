@@ -1,16 +1,9 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/catalog/data/datasources/catalog_local_datasource.dart';
 import '../../features/catalog/data/repositories/catalog_repository_impl.dart';
 import '../../features/catalog/domain/entities/jewelry_category.dart';
 import '../../features/catalog/domain/repositories/catalog_repository.dart';
-import '../../features/tracking/data/datasources/android_hand_detector.dart';
-import '../../features/tracking/data/datasources/face_detector_datasource.dart';
-import '../../features/tracking/data/datasources/ios_hand_detector.dart';
-import '../../features/tracking/data/datasources/landmark_detector.dart';
-import '../../features/tracking/data/datasources/pose_detector_datasource.dart';
 import '../../features/tracking/data/repositories/tracking_repository_impl.dart';
 import '../../features/tracking/domain/repositories/tracking_repository.dart';
 import '../../features/tracking/domain/strategies/bracelet_strategy.dart';
@@ -39,28 +32,9 @@ final catalogRepositoryProvider = Provider<CatalogRepository>(
 );
 
 // ── Tracking ────────────────────────────────────────────────────────────────
-/// Detector de manos según plataforma (Android: MediaPipe/JNI; iOS: nativo B1).
-final handDetectorProvider = Provider<LandmarkDetector>((ref) {
-  return Platform.isIOS ? IosHandDetector() : AndroidHandDetector();
-});
-
-final faceDetectorProvider =
-    Provider<LandmarkDetector>((ref) => FaceDetectorDataSource());
-
-final poseDetectorProvider =
-    Provider<LandmarkDetector>((ref) => PoseDetectorDataSource());
-
-/// Detector por tipo, para que el repositorio elija según la estrategia.
-final detectorsByKindProvider =
-    Provider<Map<DetectorKind, LandmarkDetector>>((ref) {
-  return {
-    DetectorKind.hand: ref.watch(handDetectorProvider),
-    DetectorKind.face: ref.watch(faceDetectorProvider),
-    DetectorKind.pose: ref.watch(poseDetectorProvider),
-  };
-});
-
-/// Estrategias de anclaje por categoría (patrón Strategy).
+/// Estrategias de anclaje por categoría (patrón Strategy). El detector de
+/// cada estrategia (`DetectorKind`) se instancia dentro de un isolate
+/// dedicado por sesión de tracking (ver `DetectionIsolate`), no aquí.
 final trackingStrategiesProvider =
     Provider<Map<JewelryCategory, TrackingStrategy>>((ref) {
   return const {
@@ -73,7 +47,6 @@ final trackingStrategiesProvider =
 final trackingRepositoryProvider = Provider<TrackingRepository>((ref) {
   return TrackingRepositoryImpl(
     cameraService: ref.watch(cameraServiceProvider),
-    detectors: ref.watch(detectorsByKindProvider),
     strategies: ref.watch(trackingStrategiesProvider),
   );
 });

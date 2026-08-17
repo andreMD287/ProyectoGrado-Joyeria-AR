@@ -53,9 +53,6 @@ class IosHandDetector implements LandmarkDetector {
   Future<void> dispose() async {
     await _channel.invokeMethod<void>('stop');
   }
-
-  @override
-  ImageFormatGroup get imageFormatGroup => ImageFormatGroup.bgra8888;
 }
 
 /// Convierte la lista plana `[x, y, confidence] × 21` que entrega la capa nativa
