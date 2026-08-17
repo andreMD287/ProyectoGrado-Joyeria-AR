@@ -6,11 +6,10 @@
     <!-- Internet: requerido para servir/descargar assets 3D -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
-    <!-- ARCore: la app usa AR y depende de la cámara AR -->
-    <uses-feature android:name="android.hardware.camera.ar" android:required="true"/>
-
-    <!-- ARCore: se instala/actualiza automáticamente desde la Play Store si falta -->
-    <uses-permission android:name="com.google.ar.core"/>
+    <!-- ARCore: opcional. La prueba virtual (aretes/pulseras/collares) usa
+         cámara + ML Kit/MediaPipe y no depende de ARCore; solo el visor de
+         colocación en superficie (aún no implementado) lo usaría. -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false"/>
 
     <application
         android:label="Joyería AR"
@@ -44,10 +43,10 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- ARCore requerido: la app no funciona sin soporte AR -->
+        <!-- ARCore opcional: la app funciona sin soporte AR (ver nota arriba). -->
         <meta-data
             android:name="com.google.ar.core"
-            android:value="required" />
+            android:value="optional" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

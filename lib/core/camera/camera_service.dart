@@ -1,11 +1,15 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 
 /// Encapsula la configuración y el stream de la cámara, con los ajustes
 /// validados previamente (resolución media, YUV420, sin audio).
 class CameraService {
-  CameraController? _controller;
+  /// Observable para que la UI (vista previa) sepa cuándo el controlador
+  /// queda listo, sin depender de que ya haya llegado una detección.
+  final ValueNotifier<CameraController?> controllerNotifier =
+      ValueNotifier(null);
 
-  CameraController? get controller => _controller;
+  CameraController? get controller => controllerNotifier.value;
 
   /// Inicia el stream de la cámara indicada y entrega cada frame a [onFrame].
   ///
@@ -33,13 +37,14 @@ class CameraService {
     );
     await controller.initialize();
     await controller.startImageStream(onFrame);
-    _controller = controller;
+    controllerNotifier.value = controller;
     return controller;
   }
 
   Future<void> dispose() async {
-    await _controller?.stopImageStream();
-    await _controller?.dispose();
-    _controller = null;
+    final controller = controllerNotifier.value;
+    controllerNotifier.value = null;
+    await controller?.stopImageStream();
+    await controller?.dispose();
   }
 }
