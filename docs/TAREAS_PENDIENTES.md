@@ -1,6 +1,6 @@
 # Registro de tareas pendientes — Visualización virtual de joyería con Realidad Aumentada
 
-**Equipo:** Grupo 7 (2026) · **Última actualización:** 2026-08-10
+**Equipo:** Grupo 7 (2026) · **Última actualización:** 2026-08-17
  
 > **Documento interno de trabajo.** El contenido de este archivo no debe trasladarse literalmente a documentos académicos. En esos documentos aplican las convenciones de lenguaje del proyecto: no se nombra al cliente, no se emplean los términos "MVP" ni "prototipo", y no se hace referencia a anillos ni a dedos.
 
@@ -49,7 +49,14 @@ Además del avance por tarea (ver §3), se construyeron cimientos que antes no e
 - **Código de referencia del MVP** clonado localmente en `mvp-reference/` (ignorado por git) para consulta.
 
 > El detalle técnico de cada spike vive en `spikes/` y en los documentos `docs/`.
- 
+
+### 2.2 Trabajo realizado en esta sesión (2026-08-17)
+
+- **Pantalla real de prueba virtual** (`TryOnScreen`): antes solo mostraba una etiqueta de texto; ahora renderiza la vista previa de cámara en vivo con el modelo 3D superpuesto en el punto de anclaje (`AnchorPose`), genérica para las tres categorías. **Sirve para** poder validar C1/C3 y la detección de B2/B3 en dispositivo real, no solo en pruebas unitarias.
+- **Corrección de `AndroidManifest.xml`**: `com.google.ar.core` estaba declarado como `required`, lo que rompía la compilación por conflicto de manifest merger con `ar_flutter_plugin_2` y habría impedido instalar la app desde Play Store en dispositivos sin ARCore — pese a que el pipeline de tracking no depende de ARCore. Se corrigió a `optional`/`required="false"`.
+- **Validación end-to-end en dispositivo físico** (Samsung SM-A155M, Android 16, sin ARCore): compiló, instaló y corrió sin errores; la pulsera de prueba se ancla a la muñeca y sigue el movimiento sin jitter perceptible, confirmando C3.
+- **Modelo GLB de referencia** (`assets/models/_placeholder.glb`, tomado de `mvp-reference/`): se usa automáticamente cuando el GLB real de una pieza aún no existe en el catálogo (D2 sigue pendiente), para no bloquear la validación del pipeline de render.
+
 ---
  
 ## 3. Detalle de tareas
@@ -122,7 +129,7 @@ Los collares no están cubiertos por MediaPipe Hands ni por Face Mesh; requieren
 **Criterio de cierre:** existe una prueba de concepto de detección de hombros y una nota de viabilidad con la opción recomendada.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-10): ✅ Hecho (validación en dispositivo pendiente).** Se desarrolló el spike (`spikes/B2-pose-collares/`) con la estimación del anclaje del collar a partir de los hombros (POC ejecutable con pruebas), la nota de viabilidad con recomendación de **`google_mlkit_pose_detection`**, y la integración en la app (`PoseDetectorDataSource` + `NecklaceStrategy` con pruebas unitarias). **Sirve para** habilitar los collares, que antes no tenían ni investigación iniciada. Queda pendiente validar la detección en cámara frontal en dispositivo.
+> **Estado (2026-08-17): ✅ Hecho; render disponible, validación de detección en dispositivo pendiente.** Se desarrolló el spike (`spikes/B2-pose-collares/`) con la estimación del anclaje del collar a partir de los hombros (POC ejecutable con pruebas), la nota de viabilidad con recomendación de **`google_mlkit_pose_detection`**, y la integración en la app (`PoseDetectorDataSource` + `NecklaceStrategy` con pruebas unitarias). `TryOnScreen` (construida para C3) ya sirve también para collares al ser genérica por categoría. **Sirve para** habilitar los collares, que antes no tenían ni investigación iniciada. Queda pendiente validar en dispositivo que la detección de hombros por cámara frontal ancla correctamente.
  
 #### B3 — Spike: detección de lóbulos para aretes
 **Prioridad:** Alta · **Esfuerzo:** M–L (6–10 h) · **Tipo:** Técnica · **Dependencias:** entorno funcional
@@ -176,7 +183,7 @@ Implementar la pantalla actualmente pendiente (stub): captura mediante cámara f
 **Criterio de cierre:** el modelo de prueba se ancla correctamente al lóbulo y sigue el movimiento del rostro en un dispositivo físico.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-10): ⏳ Pendiente.** Las bases están listas (`EarringStrategy`, `FaceDetectorDataSource` y el pipeline conectado), pero falta la pantalla con captura frontal, render del GLB anclado al lóbulo y seguimiento, y su validación en dispositivo.
+> **Estado (2026-08-17): 🟡 La pantalla de render ya no es un stub; falta validar la detección de lóbulo en dispositivo.** `TryOnScreen` (construida para C3, ver más abajo) es genérica por `JewelryCategory` — usa cámara frontal, `FaceDetectorDataSource` y `EarringStrategy` igual que para pulseras — por lo que en principio ya sirve para aretes sin cambios adicionales de UI. **Falta** validar en dispositivo que la estimación del lóbulo (B3) ancla correctamente con rostro real frente a la cámara frontal (con distintos ángulos y cabello suelto/recogido, según el protocolo de B3).
  
 #### C2 — Tracking de muñeca en iOS
 **Prioridad:** Alta · **Esfuerzo:** L (10–20 h) · **Tipo:** Técnica · **Dependencias:** B1
@@ -196,7 +203,7 @@ Aplicar el filtro seleccionado en B4 al tracking de muñeca existente y verifica
 **Criterio de cierre:** el anclaje se mantiene estable durante el movimiento normal de la mano.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-10): 🟡 Integrado en código; validación en dispositivo pendiente.** El One Euro Filter (B4) ya se aplica en el `TrackingRepositoryImpl` a la posición de anclaje. **Falta** verificar en un Android físico que el jitter desaparece sin latencia perceptible y afinar los parámetros.
+> **Estado (2026-08-17): ✅ Hecho, validado en dispositivo físico (Android sin ARCore, Samsung SM-A155M).** Se construyó la pantalla de prueba virtual (`TryOnScreen`, `lib/features/ar_experience/presentation/screens/try_on_screen.dart`): vista previa de cámara en vivo + modelo 3D superpuesto en el punto de anclaje, leyendo el stream `AnchorPose` ya estabilizado con One Euro Filter. Se corrió en dispositivo real: la pulsera de prueba queda anclada a la muñeca y sigue el movimiento de la mano sin jitter perceptible. **Hallazgo adicional:** el `AndroidManifest.xml` forzaba `com.google.ar.core` como `required`, lo que rompía la compilación (conflicto de manifest merger con `ar_flutter_plugin_2`) y habría bloqueado la app en Play Store para dispositivos sin ARCore, pese a que el pipeline de tracking no usa ARCore. Se corrigió a `optional`/`required="false"`, coherente con que la app funciona sin ARCore (ver nota en §2 y C1). Como el catálogo aún no tiene modelos GLB reales (D2 pendiente), la pantalla usa un modelo de referencia (`assets/models/_placeholder.glb`, tomado del MVP) como *fallback* automático mientras no exista el GLB real de cada pieza.
  
 #### C4 — Depuración técnica del repositorio
 **Prioridad:** Baja · **Esfuerzo:** S (~1 h) · **Tipo:** Técnica · **Dependencias:** ninguna
@@ -355,14 +362,14 @@ No se establecen asignaciones fijas. Cada integrante selecciona tareas según su
 | A3 — Inventario de dispositivos | 🟡 Plantilla lista (falta llenar) |
 | A4 — Verificación cruzada de entornos | ⏳ Pendiente |
 | B1 — Tracking de manos en iOS | 🟡 Análisis + andamiaje (POC en iPhone pendiente) |
-| B2 — Pose para collares | ✅ Hecho (validación en dispositivo pendiente) |
-| B3 — Lóbulos para aretes | ✅ Decisión hecha (evidencia en dispositivo pendiente) |
+| B2 — Pose para collares | 🟡 Hecho; render listo, falta validar detección en dispositivo |
+| B3 — Lóbulos para aretes | 🟡 Decisión hecha; render listo, falta validar detección en dispositivo |
 | B4 — Estabilización del tracking | ✅ Hecho |
 | B5 — Isolate de detección | ✅ Hecho (prototipo) |
 | B6 — Oclusión por segmentación | ✅ Hecho |
-| C1 — Pantalla de aretes | ⏳ Pendiente |
+| C1 — Pantalla de aretes | 🟡 Pantalla de render lista (genérica); falta validar detección de lóbulo en dispositivo |
 | C2 — Tracking de muñeca en iOS | ⏳ Pendiente |
-| C3 — Filtro de estabilización (Android) | 🟡 Integrado en código (validación pendiente) |
+| C3 — Filtro de estabilización (Android) | ✅ Hecho, validado en dispositivo físico |
 | C4 — Depuración del repositorio | 🟡 Repo oficial limpio (queda el del MVP) |
 | C5 — Prompt 4 / `VIABILIDAD_TECNICA.md` | ⏳ Pendiente |
 | D1 — Pipeline de digitalización | ✅ Hecho |

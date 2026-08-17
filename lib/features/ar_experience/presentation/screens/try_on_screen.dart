@@ -1,13 +1,34 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:math' as math;
 
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
+
+import '../../../../core/di/providers.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
+import '../../../tracking/domain/entities/anchor_pose.dart';
 import '../controllers/try_on_controller.dart';
 
-/// Experiencia de prueba virtual de una pieza. En este scaffolding muestra la
-/// pieza y el estado del flujo; el render AR se integra en los sprints
-/// (ar_flutter_plugin_2 + anclaje estabilizado).
+/// Modelo de referencia usado cuando el GLB real de la pieza (D2, catálogo)
+/// todavía no existe en el repositorio, para poder validar el pipeline de
+/// render sobre el punto de anclaje sin esperar al modelado final.
+const _placeholderModelAsset = 'assets/models/_placeholder.glb';
+
+final _resolvedModelAssetProvider =
+    FutureProvider.family<String, String>((ref, assetPath) async {
+  try {
+    await rootBundle.load(assetPath);
+    return assetPath;
+  } catch (_) {
+    return _placeholderModelAsset;
+  }
+});
+
+/// Experiencia de prueba virtual de una pieza: cámara en vivo con el modelo
+/// 3D superpuesto en el punto de anclaje que entrega el pipeline de tracking.
 class TryOnScreen extends ConsumerWidget {
   final String pieceId;
   const TryOnScreen({super.key, required this.pieceId});
@@ -58,6 +79,10 @@ class _TryOnBody extends ConsumerWidget {
     final state = ref.watch(tryOnControllerProvider);
     final controller = ref.read(tryOnControllerProvider.notifier);
     final active = state is TryOnActive || state is TryOnRequestingPermission;
+    final anchor = switch (state) {
+      TryOnActive(:final anchor) => anchor,
+      _ => null,
+    };
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -73,7 +98,13 @@ class _TryOnBody extends ConsumerWidget {
             const SizedBox(height: 8),
             Text(piece.descripcion!),
           ],
-          const Spacer(),
+          const SizedBox(height: 12),
+          Expanded(
+            child: active
+                ? _CameraOverlay(piece: piece, anchor: anchor)
+                : _IdlePreview(reason: state is TryOnUnsupported ? state.reason : null),
+          ),
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -86,12 +117,6 @@ class _TryOnBody extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Render AR pendiente de integración en los sprints '
-            '(colocación con ar_flutter_plugin_2 + anclaje estabilizado).',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: active
@@ -101,6 +126,124 @@ class _TryOnBody extends ConsumerWidget {
             label: Text(active ? 'Detener' : 'Iniciar prueba'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _IdlePreview extends StatelessWidget {
+  final String? reason;
+  const _IdlePreview({this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.view_in_ar,
+                size: 48, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 8),
+            Text(reason ?? 'Inicia la prueba para activar la cámara.'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Vista previa de cámara con el modelo 3D superpuesto en el punto de
+/// anclaje. El controlador de cámara se observa de forma reactiva porque
+/// queda listo antes de que llegue la primera detección.
+class _CameraOverlay extends ConsumerWidget {
+  final JewelryPiece piece;
+  final AnchorPose? anchor;
+  const _CameraOverlay({required this.piece, required this.anchor});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cameraService = ref.watch(cameraServiceProvider);
+    return ValueListenableBuilder<CameraController?>(
+      valueListenable: cameraService.controllerNotifier,
+      builder: (context, camController, _) {
+        if (camController == null || !camController.value.isInitialized) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: 1 / camController.value.aspectRatio,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                fit: StackFit.expand,
+                children: [
+                  CameraPreview(camController),
+                  if (anchor != null)
+                    _ModelOverlay(
+                      piece: piece,
+                      anchor: anchor!,
+                      areaSize: constraints.biggest,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Pieza 3D posicionada sobre el punto de anclaje normalizado (x, y ∈ [0,1]
+/// en el espacio del frame de cámara, igual que el widget de vista previa).
+class _ModelOverlay extends ConsumerWidget {
+  static const double _size = 120;
+
+  final JewelryPiece piece;
+  final AnchorPose anchor;
+  final Size areaSize;
+
+  const _ModelOverlay({
+    required this.piece,
+    required this.anchor,
+    required this.areaSize,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final modelAsset = ref.watch(_resolvedModelAssetProvider(piece.modeloGlb));
+    final maxLeft = math.max(0.0, areaSize.width - _size);
+    final maxTop = math.max(0.0, areaSize.height - _size);
+    final left =
+        (anchor.position.x * areaSize.width - _size / 2).clamp(0.0, maxLeft);
+    final top =
+        (anchor.position.y * areaSize.height - _size / 2).clamp(0.0, maxTop);
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: _size,
+      height: _size,
+      child: modelAsset.when(
+        loading: () => const SizedBox.shrink(),
+        error: (error, stack) => const SizedBox.shrink(),
+        data: (src) => IgnorePointer(
+          child: ModelViewer(
+            key: const ValueKey('bracelet-model-viewer'),
+            src: src,
+            backgroundColor: Colors.transparent,
+            cameraControls: false,
+            disableZoom: true,
+            disablePan: true,
+            disableTap: true,
+            autoRotate: false,
+          ),
+        ),
       ),
     );
   }
