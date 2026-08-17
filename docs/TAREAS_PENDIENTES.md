@@ -56,6 +56,10 @@ Además del avance por tarea (ver §3), se construyeron cimientos que antes no e
 - **Corrección de `AndroidManifest.xml`**: `com.google.ar.core` estaba declarado como `required`, lo que rompía la compilación por conflicto de manifest merger con `ar_flutter_plugin_2` y habría impedido instalar la app desde Play Store en dispositivos sin ARCore — pese a que el pipeline de tracking no depende de ARCore. Se corrigió a `optional`/`required="false"`.
 - **Validación end-to-end en dispositivo físico** (Samsung SM-A155M, Android 16, sin ARCore): compiló, instaló y corrió sin errores; la pulsera de prueba se ancla a la muñeca y sigue el movimiento sin jitter perceptible, confirmando C3.
 - **Modelo GLB de referencia** (`assets/models/_placeholder.glb`, tomado de `mvp-reference/`): se usa automáticamente cuando el GLB real de una pieza aún no existe en el catálogo (D2 sigue pendiente), para no bloquear la validación del pipeline de render.
+- **Corrección de bug crítico — detección facial y de pose rota en Android:** `CameraService` configuraba siempre la cámara en `yuv420` (formato que necesita `hand_landmarker`), pero `FaceDetectorDataSource` y `PoseDetectorDataSource` (ML Kit) requieren `nv21` de un solo plano; con `yuv420` su conversión `_toInputImage` descartaba **todos** los frames en silencio (sin error visible), por lo que aretes y collares nunca detectaban nada, pese a que las pruebas unitarias de las estrategias pasaban. Se corrigió añadiendo `LandmarkDetector.imageFormatGroup` (cada detector declara el formato que necesita) y propagándolo hasta `CameraService.startStream`. **Sirve para** que B2/B3/C1 sean validables de verdad en dispositivo, no solo en pruebas unitarias con landmarks sintéticos.
+- **Corrección de ANR real reproducido en dispositivo:** al pasar de pulseras (cámara trasera) a aretes (cámara frontal) sin esperar a que la sesión anterior liberara la cámara, la app quedó congelada («Joyería AR no responde», `Input dispatching timed out`, 10 s de espera). Se corrigió haciendo que `TrackingRepositoryImpl.anchorPoseStream` libere (`stop()`) cualquier sesión previa antes de iniciar una nueva, y que `TryOnController` libere la cámara al salir de la pantalla aunque el usuario no pulse "Detener" (antes solo cancelaba la suscripción local, sin liberar el hardware). **Sirve para** que cambiar de categoría de forma consecutiva no cuelgue la app — riesgo real para cualquier flujo de navegación entre piezas.
+- **Validación end-to-end de las tres categorías en el mismo dispositivo:** con las dos correcciones anteriores, se probaron pulseras (muñeca), aretes (lóbulo) y collares (hombros) en secuencia, sin errores fatales ni ANR — el pipeline completo cámara → detector → estrategia → estabilizador → render queda confirmado como funcional en Android sin ARCore.
+- **Hallazgo menor, no bloqueante:** en la prueba de collar se observó un anchor con `z` fuera de rango (p. ej. `-387.49`) — `PoseDetectorDataSource._mapPose` normaliza `x`/`y` dividiendo por ancho/alto del frame pero deja `z` sin normalizar (ML Kit lo entrega en una escala distinta). No afecta el render actual (que solo usa `x`/`y`), pero conviene normalizarlo antes de usar `z` para profundidad/escala.
 
 ---
  
@@ -129,7 +133,7 @@ Los collares no están cubiertos por MediaPipe Hands ni por Face Mesh; requieren
 **Criterio de cierre:** existe una prueba de concepto de detección de hombros y una nota de viabilidad con la opción recomendada.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-17): ✅ Hecho; render disponible, validación de detección en dispositivo pendiente.** Se desarrolló el spike (`spikes/B2-pose-collares/`) con la estimación del anclaje del collar a partir de los hombros (POC ejecutable con pruebas), la nota de viabilidad con recomendación de **`google_mlkit_pose_detection`**, y la integración en la app (`PoseDetectorDataSource` + `NecklaceStrategy` con pruebas unitarias). `TryOnScreen` (construida para C3) ya sirve también para collares al ser genérica por categoría. **Sirve para** habilitar los collares, que antes no tenían ni investigación iniciada. Queda pendiente validar en dispositivo que la detección de hombros por cámara frontal ancla correctamente.
+> **Estado (2026-08-17): ✅ Hecho y funcionando en dispositivo físico (Android sin ARCore).** Se desarrolló el spike (`spikes/B2-pose-collares/`) con la estimación del anclaje del collar a partir de los hombros (POC ejecutable con pruebas), la nota de viabilidad con recomendación de **`google_mlkit_pose_detection`**, y la integración en la app (`PoseDetectorDataSource` + `NecklaceStrategy` con pruebas unitarias). Se corrigió un bug que impedía que la detección de pose funcionara en Android (ver nota en §2.2: formato de imagen de cámara incorrecto para ML Kit) y se confirmó en el Samsung SM-A155M que la cámara frontal detecta los hombros y ancla el modelo sobre el pecho. **Falta** la validación sistemática con el protocolo completo (distintas personas, distancias y ángulos) antes de darlo por cerrado para producción.
  
 #### B3 — Spike: detección de lóbulos para aretes
 **Prioridad:** Alta · **Esfuerzo:** M–L (6–10 h) · **Tipo:** Técnica · **Dependencias:** entorno funcional
@@ -183,7 +187,7 @@ Implementar la pantalla actualmente pendiente (stub): captura mediante cámara f
 **Criterio de cierre:** el modelo de prueba se ancla correctamente al lóbulo y sigue el movimiento del rostro en un dispositivo físico.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-17): 🟡 La pantalla de render ya no es un stub; falta validar la detección de lóbulo en dispositivo.** `TryOnScreen` (construida para C3, ver más abajo) es genérica por `JewelryCategory` — usa cámara frontal, `FaceDetectorDataSource` y `EarringStrategy` igual que para pulseras — por lo que en principio ya sirve para aretes sin cambios adicionales de UI. **Falta** validar en dispositivo que la estimación del lóbulo (B3) ancla correctamente con rostro real frente a la cámara frontal (con distintos ángulos y cabello suelto/recogido, según el protocolo de B3).
+> **Estado (2026-08-17): ✅ Funcional y confirmado en dispositivo físico (Android sin ARCore).** `TryOnScreen` es genérica por `JewelryCategory` — usa cámara frontal, `FaceDetectorDataSource` y `EarringStrategy`. Tras corregir el bug de formato de imagen (ver §2.2), se confirmó en el Samsung SM-A155M que la cámara frontal detecta el rostro y ancla el modelo cerca del lóbulo estimado. **Falta** el protocolo de prueba completo de B3 (distintos ángulos de cabeza, cabello suelto/recogido) para validar la precisión, no solo que detecta.
  
 #### C2 — Tracking de muñeca en iOS
 **Prioridad:** Alta · **Esfuerzo:** L (10–20 h) · **Tipo:** Técnica · **Dependencias:** B1
@@ -362,12 +366,12 @@ No se establecen asignaciones fijas. Cada integrante selecciona tareas según su
 | A3 — Inventario de dispositivos | 🟡 Plantilla lista (falta llenar) |
 | A4 — Verificación cruzada de entornos | ⏳ Pendiente |
 | B1 — Tracking de manos en iOS | 🟡 Análisis + andamiaje (POC en iPhone pendiente) |
-| B2 — Pose para collares | 🟡 Hecho; render listo, falta validar detección en dispositivo |
-| B3 — Lóbulos para aretes | 🟡 Decisión hecha; render listo, falta validar detección en dispositivo |
+| B2 — Pose para collares | ✅ Funcional en dispositivo (falta protocolo de precisión completo) |
+| B3 — Lóbulos para aretes | ✅ Funcional en dispositivo (falta protocolo de precisión completo) |
 | B4 — Estabilización del tracking | ✅ Hecho |
 | B5 — Isolate de detección | ✅ Hecho (prototipo) |
 | B6 — Oclusión por segmentación | ✅ Hecho |
-| C1 — Pantalla de aretes | 🟡 Pantalla de render lista (genérica); falta validar detección de lóbulo en dispositivo |
+| C1 — Pantalla de aretes | ✅ Funcional en dispositivo (falta protocolo de precisión completo de B3) |
 | C2 — Tracking de muñeca en iOS | ⏳ Pendiente |
 | C3 — Filtro de estabilización (Android) | ✅ Hecho, validado en dispositivo físico |
 | C4 — Depuración del repositorio | 🟡 Repo oficial limpio (queda el del MVP) |

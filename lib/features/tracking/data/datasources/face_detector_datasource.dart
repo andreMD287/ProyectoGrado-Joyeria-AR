@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:ui' show Size;
 
 import 'package:camera/camera.dart';
@@ -40,6 +41,10 @@ class FaceDetectorDataSource implements LandmarkDetector {
   Future<void> dispose() async {
     await _detector.close();
   }
+
+  @override
+  ImageFormatGroup get imageFormatGroup =>
+      Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888;
 
   List<Landmark> _mapFace(Face face, int width, int height) {
     final w = width.toDouble();

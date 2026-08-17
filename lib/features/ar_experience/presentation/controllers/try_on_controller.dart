@@ -42,12 +42,18 @@ class TryOnError extends TryOnState {
 }
 
 /// Orquesta permiso → cámara → tracking → estado observable por la UI.
-class TryOnController extends Notifier<TryOnState> {
+class TryOnController extends AutoDisposeNotifier<TryOnState> {
   StreamSubscription<AnchorPose>? _sub;
 
   @override
   TryOnState build() {
-    ref.onDispose(() => _sub?.cancel());
+    final repo = ref.read(trackingRepositoryProvider);
+    ref.onDispose(() {
+      _sub?.cancel();
+      // No se puede `await` en onDispose; se libera la cámara sin esperar a
+      // que termine. `stop()` es seguro de invocar aunque ya esté liberada.
+      repo.stop();
+    });
     return const TryOnIdle();
   }
 
@@ -75,4 +81,5 @@ class TryOnController extends Notifier<TryOnState> {
 }
 
 final tryOnControllerProvider =
-    NotifierProvider<TryOnController, TryOnState>(TryOnController.new);
+    AutoDisposeNotifierProvider<TryOnController, TryOnState>(
+        TryOnController.new);

@@ -44,4 +44,7 @@ class AndroidHandDetector implements LandmarkDetector {
     _plugin?.dispose();
     _plugin = null;
   }
+
+  @override
+  ImageFormatGroup get imageFormatGroup => ImageFormatGroup.yuv420;
 }
