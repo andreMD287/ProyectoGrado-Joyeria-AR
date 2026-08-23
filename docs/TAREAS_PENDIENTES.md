@@ -1,6 +1,6 @@
 # Registro de tareas pendientes — Visualización virtual de joyería con Realidad Aumentada
 
-**Equipo:** Grupo 7 (2026) · **Última actualización:** 2026-08-17
+**Equipo:** Grupo 7 (2026) · **Última actualización:** 2026-08-23
  
 > **Documento interno de trabajo.** El contenido de este archivo no debe trasladarse literalmente a documentos académicos. En esos documentos aplican las convenciones de lenguaje del proyecto: no se nombra al cliente, no se emplean los términos "MVP" ni "prototipo", y no se hace referencia a anillos ni a dedos.
 
@@ -34,10 +34,10 @@ Conforme a lo documentado en el repositorio, se encuentra resuelto y validado:
  
 - Acceso a cámara y gestión de permisos en Android e iOS, incluyendo la corrección de `PERMISSION_CAMERA=1`.
 - Visor 3D con materiales PBR (`model_viewer_plus`) y colocación en realidad aumentada sobre superficie detectada (`ar_flutter_plugin_2`).
-- Tracking de muñeca mediante MediaPipe (`hand_landmarker`, landmark 0 — WRIST), validado únicamente en Android.
-- Entorno de desarrollo iOS operativo (Mac Mini); ejecución confirmada en dispositivo físico en modo debug.
-- Repositorio configurado en GitHub, con Podfile unificado (iOS 16.0, `use_modular_headers!`).
-**Pendiente de mayor relevancia:** tracking de manos en iOS, detección facial para aretes (actualmente un stub sin implementar), collares (sin desarrollo ni investigación iniciada), modelos GLB de piezas reales, y varias secciones del SRS y del SPMP.
+- Prueba virtual funcional de punta a punta en las **tres categorías** (pulseras, aretes, collares), validada en dispositivo físico tanto en **Android** (Samsung SM-A155M) como en **iOS** (iPhone 15, iOS 26.5): tracking de muñeca (MediaPipe/JNI en Android, Apple Vision en iOS), detección de lóbulos y de hombros (ML Kit en ambas plataformas).
+- Entorno de desarrollo iOS operativo (Mac Mini y Mac de José); build, instalación y ejecución confirmadas en iPhone físico en modo debug.
+- Repositorio configurado en GitHub, con Podfile unificado (iOS 16.0, `use_modular_headers!`) y deployment target de Xcode alineado a 16.0.
+**Pendiente de mayor relevancia:** modelos GLB de piezas reales (D2), y varias secciones del SRS y del SPMP (Frente E).
 
 ### 2.1 Trabajo realizado en esta sesión (2026-08-10)
 
@@ -62,6 +62,17 @@ Además del avance por tarea (ver §3), se construyeron cimientos que antes no e
 - **Validación end-to-end de las tres categorías en el mismo dispositivo, con detección en isolate:** se probaron pulseras (muñeca, JNI), aretes (lóbulo, ML Kit/platform channel) y collares (hombros, ML Kit/platform channel) en secuencia, sin errores fatales, sin `MissingPluginException` y sin ANR — confirma que tanto el detector JNI como los de ML Kit funcionan correctamente dentro del isolate dedicado.
 - **Hallazgo menor, no bloqueante:** en la prueba de collar se observó un anchor con `z` fuera de rango (p. ej. `-387.49`, `-650.81`) — `PoseDetectorDataSource._mapPose` normaliza `x`/`y` dividiendo por ancho/alto del frame pero deja `z` sin normalizar (ML Kit lo entrega en una escala distinta). No afecta el render actual (que solo usa `x`/`y`), pero conviene normalizarlo antes de usar `z` para profundidad/escala.
 
+### 2.3 Trabajo realizado en esta sesión (2026-08-23)
+
+- **C2 portado a producción y validado en iPhone físico:** se copió `HandTrackingHandler.swift` (referencia de B1, Apple Vision `VNDetectHumanHandPoseRequest`) a `ios/Runner/`, se agregó al target `Runner` en Xcode, y se registró en `AppDelegate.swift` (adaptado al patrón `FlutterImplicitEngineDelegate` que ya usa el proyecto, distinto al de la nota original de B1). El lado Dart ya estaba cableado desde antes (`IosHandDetector`, selección de formato de cámara e isolate por plataforma). **Sirve para** cerrar el riesgo técnico más alto del proyecto: la muñeca ya se detecta y ancla en iOS, no solo en Android.
+- **Bug de integración de CocoaPods encontrado y corregido:** `ios/Flutter/Debug.xcconfig` y `Release.xcconfig` no incluían la configuración generada por CocoaPods (`Pods-Runner.debug/release.xcconfig`), por lo que Xcode no podía resolver `PODS_ROOT` ni los `.xcfilelist` de los Pods (error "Unable to load contents of file list..."). Se corrigió agregando el `#include?` correspondiente en ambos archivos. **Sirve para** que el proyecto compile con CocoaPods de forma confiable; es una pista fuerte para **A1** (el mismo tipo de error — `Flutter.h not found`/fallos de compilación — puede tener esta misma causa raíz en el Mac de Valentina).
+- **Inconsistencia de deployment target corregida:** el `.xcodeproj` tenía `IPHONEOS_DEPLOYMENT_TARGET = 13.0` en las tres configuraciones, mientras el `Podfile` ya declaraba `platform :ios, '16.0'`. Esto además rompía la compilación de Apple Vision (`VNDetectHumanHandPoseRequest` requiere iOS 14+). Se unificó a `16.0` en el `.xcodeproj`.
+- **Riesgo identificado con el Flutter tool más nuevo:** al usar `flutter build ios` en un Mac con una versión de Flutter más nueva que la que generó el proyecto, el tool intenta migrar automáticamente a Swift Package Manager (sube el deployment target, agrega `FlutterGeneratedPluginSwiftPackage` al proyecto) sin pedir confirmación. Esto dejó plugins como `camera_avfoundation` sin instalar vía CocoaPods (el `.flutter-plugins-dependencies` quedó marcado con `swift_package_manager_enabled: true`, y `pod install` los omite esperando que vengan por SPM). Se desactivó con `flutter config --no-enable-swift-package-manager` para mantener el proyecto 100% en CocoaPods, consistente con el resto del equipo. **Pendiente de discutir en equipo:** si en algún momento se quiere adoptar SPM, debe ser una decisión explícita y no un efecto colateral de tener un Flutter más nuevo instalado.
+- **Bug crítico encontrado y corregido — crash fatal al presionar "Detener" en iOS:** `DetectionIsolate.dispose()` mataba el isolate de detección (`kill(priority: Isolate.immediate)`) inmediatamente después de mandarle la señal de parada, sin esperar a que terminara. En Android esto no causaba problema, pero `IosHandDetector.dispose()` hace una llamada nativa vía `MethodChannel` (`invokeMethod('stop')`); si el isolate moría mientras esa respuesta nativa estaba en camino, el motor de Flutter crasheaba con `Check failed: did_send` (fatal, cierra la app) en vez de lanzar una excepción manejable. Se corrigió haciendo que el isolate mande una confirmación (`_StopAck`) al terminar su `dispose()`, y que `DetectionIsolate.dispose()` espere esa confirmación (con límite de 2 s) antes de matar el isolate.
+- **Validación end-to-end en iPhone 15 (iOS 26.5, José):** las tres categorías funcionan correctamente — pulseras (muñeca vía Apple Vision), aretes (lóbulo vía ML Kit) y collares (hombros vía ML Kit), incluyendo iniciar y detener la sesión de tracking repetidamente sin crashear.
+
+> **Nota:** los cambios de esta sesión son locales (no comiteados), por indicación explícita del equipo.
+
 ---
  
 ## 3. Detalle de tareas
@@ -79,6 +90,8 @@ Diagnosticar y corregir el fallo de compilación de iOS en el equipo indicado. P
 **Asignado a:** _(pendiente — se recomienda ejecución conjunta con Valentina Carreño)_
 
 > **Estado (2026-08-10): ⏳ Pendiente.** Requiere el equipo físico (MacBook Air) para diagnosticar; no abordable de forma remota.
+>
+> **Pista (2026-08-23):** en el Mac de José se encontró y corrigió (localmente) un bug de integración de CocoaPods que producía errores de compilación en Xcode (`Unable to load contents of file list`, headers de Pods no resueltos) — ver §2.3. La causa era que `ios/Flutter/Debug.xcconfig` y `Release.xcconfig` no incluían la configuración generada por CocoaPods. Es una pista razonable para el error de Valentina (`Flutter.h not found` es de la misma familia de problema — headers que Xcode no encuentra por una integración de Pods incompleta), aunque falta confirmarlo en su equipo.
  
 #### A2 — Unificación del requisito de versión de API en Android
 **Prioridad:** Alta · **Esfuerzo:** S (1–3 h) · **Tipo:** Técnica · **Dependencias:** ninguna
@@ -124,7 +137,7 @@ El plugin `hand_landmarker` utiliza un puente JNI disponible únicamente en Andr
 **Criterio de cierre:** existe una nota comparativa con recomendación y, de resultar viable, una prueba de concepto que detecte la muñeca en un dispositivo iOS.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-10): 🟡 Análisis y andamiaje hechos; POC en dispositivo pendiente.** Se escribió la nota comparativa (`spikes/B1-ios-hand-tracking/`) con recomendación de **Apple Vision** (`VNDetectHumanHandPoseRequest`), se cableó el lado Dart (`IosHandDetector` sobre platform channel, con función de mapeo probada) y se dejó el esqueleto Swift de referencia. **Falta** ejecutar el POC en un iPhone físico (corresponde a C2). **Sirve para** tener resuelto el riesgo más alto del proyecto en cuanto al enfoque, con el código listo para implementar.
+> **Estado (2026-08-23): ✅ Hecho y validado en iPhone físico (iPhone 15, iOS 26.5).** Se escribió la nota comparativa (`spikes/B1-ios-hand-tracking/`) con recomendación de **Apple Vision** (`VNDetectHumanHandPoseRequest`), se cableó el lado Dart (`IosHandDetector` sobre platform channel) y se portó el handler Swift a producción (ver C2 y §2.3). El POC se ejecutó en dispositivo real: la muñeca se detecta y el modelo se ancla correctamente, confirmando la recomendación de Apple Vision. **Sirve para** cerrar el riesgo más alto del proyecto de punta a punta, no solo en el enfoque.
  
 #### B2 — Spike: MediaPipe Pose para collares
 **Prioridad:** Alta · **Esfuerzo:** L (8–15 h) · **Tipo:** Técnica · **Dependencias:** entorno funcional en cualquier plataforma
@@ -198,7 +211,7 @@ Implementar en iOS la alternativa seleccionada en el spike B1, replicando la fun
 **Criterio de cierre:** la detección de muñeca se ejecuta en un iPhone físico con precisión comparable a la obtenida en Android.
 **Asignado a:** _(pendiente)_
 
-> **Estado (2026-08-10): ⏳ Pendiente.** El andamiaje de B1 está listo (Dart + esqueleto Swift), pero falta agregar el Swift al target en Xcode, registrarlo y validar la detección en un iPhone.
+> **Estado (2026-08-23): ✅ Hecho, validado en dispositivo físico (iPhone 15, iOS 26.5, José).** Se agregó `HandTrackingHandler.swift` al target `Runner` en Xcode y se registró en `AppDelegate.swift`. En el camino se corrigieron tres bugs de entorno que bloqueaban la compilación (ver §2.3): integración de CocoaPods incompleta en los `.xcconfig`, deployment target inconsistente (13.0 vs 16.0), y una auto-migración a Swift Package Manager del Flutter tool que dejaba plugins sin instalar. Se confirmó en dispositivo real que la muñeca se detecta y el modelo se ancla y sigue el movimiento, igual que en Android. **Hallazgo adicional:** se encontró y corrigió un crash fatal al presionar "Detener" (`DetectionIsolate` mataba el isolate antes de que terminara una llamada nativa async pendiente); ver §2.3.
  
 #### C3 — Integración del filtro de estabilización (Android)
 **Prioridad:** Media · **Esfuerzo:** M (4–6 h) · **Tipo:** Técnica · **Dependencias:** B4
@@ -347,7 +360,7 @@ E1 ─────► E4
  
 - **Tareas con mayor efecto habilitador:** A1 y A2 (condicionan el desarrollo posterior) y los spikes B1–B3 (definen el enfoque de implementación de las tres categorías de producto).
 - **Tareas sin dependencias, ejecutables de inmediato:** A3, B4, B5, B6, C4, D1, D3, E1, E2, E3, E5.
-- **Riesgo técnico de mayor magnitud identificado a la fecha:** B1 (sin solución definida para tracking de manos en iOS) y B2 (sin desarrollo ni investigación iniciada para collares).
+- **Riesgo técnico de mayor magnitud identificado a la fecha (2026-08-23): ninguno abierto en Frente B.** B1 (manos en iOS) y B2 (collares) ya están resueltos y validados en dispositivo. El riesgo remanente más relevante es de entorno (A1, sin diagnosticar en el equipo específico de Valentina) y de contenido (D2, modelos GLB reales).
 ## 5. Criterio de distribución del trabajo
  
 No se establecen asignaciones fijas. Cada integrante selecciona tareas según su disponibilidad y perfil, apoyándose en la clasificación **Tipo** (Técnica / General). Se sugieren los siguientes criterios, sin carácter obligatorio:
@@ -358,7 +371,7 @@ No se establecen asignaciones fijas. Cada integrante selecciona tareas según su
 
 ---
 
-## 6. Resumen de estado (2026-08-10)
+## 6. Resumen de estado (2026-08-23)
 
 | Tarea | Estado |
 |---|---|
@@ -366,14 +379,14 @@ No se establecen asignaciones fijas. Cada integrante selecciona tareas según su
 | A2 — Unificación `minSdk` | ✅ Hecho |
 | A3 — Inventario de dispositivos | 🟡 1 de 4 filas completa |
 | A4 — Verificación cruzada de entornos | ⏳ Pendiente |
-| B1 — Tracking de manos en iOS | 🟡 Análisis + andamiaje (POC en iPhone pendiente) |
+| B1 — Tracking de manos en iOS | ✅ Hecho, validado en iPhone físico |
 | B2 — Pose para collares | ✅ Funcional en dispositivo (falta protocolo de precisión completo) |
 | B3 — Lóbulos para aretes | ✅ Funcional en dispositivo (falta protocolo de precisión completo) |
 | B4 — Estabilización del tracking | ✅ Hecho |
 | B5 — Isolate de detección | ✅ Hecho y portado a producción, validado en dispositivo |
 | B6 — Oclusión por segmentación | ✅ Hecho |
 | C1 — Pantalla de aretes | ✅ Funcional en dispositivo (falta protocolo de precisión completo de B3) |
-| C2 — Tracking de muñeca en iOS | ⏳ Pendiente |
+| C2 — Tracking de muñeca en iOS | ✅ Hecho, validado en dispositivo físico |
 | C3 — Filtro de estabilización (Android) | ✅ Hecho, validado en dispositivo físico |
 | C4 — Depuración del repositorio | 🟡 Repo oficial limpio (queda el del MVP) |
 | C5 — Prompt 4 / `VIABILIDAD_TECNICA.md` | ⏳ Pendiente |

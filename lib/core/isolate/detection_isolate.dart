@@ -53,6 +53,10 @@ class _StopMessage {
   const _StopMessage();
 }
 
+class _StopAck {
+  const _StopAck();
+}
+
 /// Isolate dedicado de detección (spike B5 portado con el detector real):
 /// aloja la instancia del [LandmarkDetector] que corresponda según
 /// [DetectorKind] y la plataforma, y procesa cada frame fuera del isolate
@@ -68,6 +72,7 @@ class DetectionIsolate {
   ReceivePort? _receivePort;
   final Map<int, Completer<List<Landmark>>> _pending = {};
   int _seq = 0;
+  Completer<void>? _stopAck;
 
   Future<void> start(DetectorKind kind) async {
     final token = RootIsolateToken.instance;
@@ -82,6 +87,8 @@ class DetectionIsolate {
         ready.complete(msg);
       } else if (msg is _DetectResponse) {
         _pending.remove(msg.id)?.complete(msg.landmarks);
+      } else if (msg is _StopAck) {
+        _stopAck?.complete();
       }
     });
     _isolate = await Isolate.spawn(
@@ -102,8 +109,24 @@ class DetectionIsolate {
     return completer.future;
   }
 
+  /// Le pide al isolate que se detenga y espera su confirmación antes de
+  /// matarlo. Es necesario esperar (con límite de tiempo): algunos
+  /// detectores (p. ej. [IosHandDetector]) hacen una llamada de vuelta a
+  /// nativo en `dispose()`, y matar el isolate mientras esa respuesta está
+  /// en camino provoca un crash fatal del motor de Flutter (`did_send`
+  /// check failed) en vez de una excepción manejable.
   Future<void> dispose() async {
-    _sendPort?.send(const _StopMessage());
+    final sendPort = _sendPort;
+    if (sendPort != null) {
+      final ack = Completer<void>();
+      _stopAck = ack;
+      sendPort.send(const _StopMessage());
+      await ack.future.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {},
+      );
+    }
+    _stopAck = null;
     _receivePort?.close();
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
@@ -154,6 +177,7 @@ class DetectionIsolate {
     await for (final msg in port) {
       if (msg is _StopMessage) {
         await detector.dispose();
+        start.replyTo.send(const _StopAck());
         port.close();
         break;
       }
