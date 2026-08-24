@@ -33,6 +33,9 @@ class NecklaceStrategy implements TrackingStrategy {
   DetectorKind get detectorKind => DetectorKind.pose;
 
   @override
+  void reset() {}
+
+  @override
   AnchorPose? computeAnchor(List<Landmark> landmarks) {
     if (landmarks.length <= rightShoulder) return null;
     final l = landmarks[leftShoulder];

@@ -17,6 +17,9 @@ class BraceletStrategy implements TrackingStrategy {
   DetectorKind get detectorKind => DetectorKind.hand;
 
   @override
+  void reset() {}
+
+  @override
   AnchorPose? computeAnchor(List<Landmark> landmarks) {
     if (landmarks.length <= wristLandmark) return null;
     final w = landmarks[wristLandmark];

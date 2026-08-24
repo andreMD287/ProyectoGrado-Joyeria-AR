@@ -2,14 +2,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/earring_strategy.dart';
 
-/// Lista de landmarks de rostro en el orden que espera EarringStrategy:
-/// 0 oreja izq · 1 oreja der · 2 ojo izq · 3 ojo der. Un landmark ausente se
-/// pasa como `null` (visibility 0).
 List<Landmark> faceLandmarks({
   Landmark? leftEar,
   Landmark? rightEar,
   Landmark? leftEye,
   Landmark? rightEye,
+  Landmark? leftCheek,
+  Landmark? rightCheek,
+  Landmark? leftBBoxLobe,
+  Landmark? rightBBoxLobe,
 }) {
   const absent = Landmark(0, 0, 0, visibility: 0);
   return [
@@ -17,61 +18,66 @@ List<Landmark> faceLandmarks({
     rightEar ?? absent,
     leftEye ?? absent,
     rightEye ?? absent,
+    leftCheek ?? absent,
+    rightCheek ?? absent,
+    leftBBoxLobe ?? absent,
+    rightBBoxLobe ?? absent,
   ];
 }
 
 void main() {
-  const strategy = EarringStrategy();
+  late EarringStrategy strategy;
 
-  test('estima el lóbulo por debajo y hacia afuera de la oreja', () {
-    final anchor = strategy.computeAnchor(faceLandmarks(
-      leftEar: const Landmark(0.34, 0.52, 0.0, visibility: 1),
-      rightEar: const Landmark(0.66, 0.52, 0.0, visibility: 1),
-      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
-      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
-    ));
-
-    expect(anchor, isNotNull);
-    expect(anchor!.position.y, closeTo(0.52 + 0.32 * 0.16, 1e-6));
-    expect(anchor.position.x, lessThan(0.34));
-    expect(anchor.rollRadians.abs(), lessThan(0.05));
+  setUp(() {
+    strategy = EarringStrategy();
   });
 
-  test('oreja derecha empuja el anclaje hacia afuera (+X)', () {
+  test('usa lóbulo del bbox y empuja un poco afuera', () {
     final anchor = strategy.computeAnchor(faceLandmarks(
-      rightEar: const Landmark(0.66, 0.52, 0.0, visibility: 1),
       leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
       rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      leftBBoxLobe: const Landmark(0.30, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.78, 0.58, 0.0, visibility: 1),
     ));
 
     expect(anchor, isNotNull);
-    expect(anchor!.position.x, greaterThan(0.66));
-    expect(anchor.position.y, greaterThan(0.52));
+    // |0.78-0.5| > |0.30-0.5| → lado derecho → outward +X
+    expect(anchor!.position.x, greaterThan(0.78));
+    expect(anchor.position.y, greaterThan(0.58));
   });
 
-  test('roll sigue la inclinación de la cabeza', () {
-    final anchor = strategy.computeAnchor(faceLandmarks(
-      leftEar: const Landmark(0.34, 0.50, 0.0, visibility: 1),
-      leftEye: const Landmark(0.42, 0.48, 0.0, visibility: 1),
-      rightEye: const Landmark(0.58, 0.54, 0.0, visibility: 1),
-    ));
-
-    expect(anchor, isNotNull);
-    expect(anchor!.rollRadians, greaterThan(0.05));
+  test('no salta de lado entre frames (lock)', () {
+    final frame = faceLandmarks(
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      leftBBoxLobe: const Landmark(0.28, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.72, 0.58, 0.0, visibility: 1),
+    );
+    final first = strategy.computeAnchor(frame)!;
+    // Aunque el otro lado sea “mejor”, debe mantener el lock.
+    final second = strategy.computeAnchor(frame)!;
+    expect(second.position.x, closeTo(first.position.x, 1e-9));
   });
 
   test('devuelve null si faltan los ojos', () {
-    final anchor = strategy.computeAnchor(faceLandmarks(
-      leftEar: const Landmark(0.34, 0.52, 0.0, visibility: 1),
-    ));
-    expect(anchor, isNull);
+    expect(
+      strategy.computeAnchor(faceLandmarks(
+        leftBBoxLobe: const Landmark(0.28, 0.58, 0.0, visibility: 1),
+      )),
+      isNull,
+    );
   });
 
-  test('devuelve null si no hay ninguna oreja', () {
-    final anchor = strategy.computeAnchor(faceLandmarks(
+  test('reset libera el lado bloqueado', () {
+    final frame = faceLandmarks(
       leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
       rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
-    ));
-    expect(anchor, isNull);
+      leftBBoxLobe: const Landmark(0.20, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.80, 0.58, 0.0, visibility: 1),
+    );
+    strategy.computeAnchor(frame);
+    strategy.reset();
+    final after = strategy.computeAnchor(frame);
+    expect(after, isNotNull);
   });
 }

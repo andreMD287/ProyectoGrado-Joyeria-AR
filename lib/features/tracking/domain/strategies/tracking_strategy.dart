@@ -15,4 +15,7 @@ abstract interface class TrackingStrategy {
   /// Calcula la pose de anclaje a partir de los landmarks; `null` si no hay
   /// datos suficientes.
   AnchorPose? computeAnchor(List<Landmark> landmarks);
+
+  /// Limpia estado de sesión (p. ej. lado bloqueado en aretes).
+  void reset();
 }

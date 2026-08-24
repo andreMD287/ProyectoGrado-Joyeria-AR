@@ -31,6 +31,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
 
   StreamController<AnchorPose>? _controller;
   DetectionIsolate? _activeIsolate;
+  JewelryCategory? _activeCategory;
   bool _busy = false;
   int _lastMs = 0;
 
@@ -39,6 +40,16 @@ class TrackingRepositoryImpl implements TrackingRepository {
     required this.strategies,
     LandmarkStabilizer? stabilizer,
   }) : stabilizer = stabilizer ?? OneEuroStabilizer();
+
+  LandmarkStabilizer _stabilizerFor(JewelryCategory category) {
+    // Aretes: más suavizado — el bbox/landmarks faciales tiemblan más que pose.
+    if (category == JewelryCategory.earring) {
+      return OneEuroStabilizer(minCutoff: 0.4, beta: 0.007, dCutoff: 1.0);
+    }
+    return stabilizer;
+  }
+
+  LandmarkStabilizer? _sessionStabilizer;
 
   @override
   Stream<AnchorPose> anchorPoseStream(JewelryCategory category) {
@@ -53,6 +64,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
       try {
         await stop(); // asegura que no quede una sesión previa a medio liberar
         _controller = controller;
+        _activeCategory = category;
+        strategy.reset();
+        _sessionStabilizer = _stabilizerFor(category);
         final isolate = DetectionIsolate();
         _activeIsolate = isolate;
         await isolate.start(strategy.detectorKind);
@@ -84,8 +98,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
       final landmarks = await isolate.detect(frame, orientation);
       final anchor = strategy.computeAnchor(landmarks);
       final controller = _controller;
+      final sessionFilter = _sessionStabilizer ?? stabilizer;
       if (anchor != null && controller != null && !controller.isClosed) {
-        final smoothed = stabilizer.filter(anchor.position, now / 1000.0);
+        final smoothed = sessionFilter.filter(anchor.position, now / 1000.0);
         controller.add(AnchorPose(
           position: smoothed,
           rollRadians: anchor.rollRadians,
@@ -109,6 +124,10 @@ class TrackingRepositoryImpl implements TrackingRepository {
     await cameraService.dispose();
     await _activeIsolate?.dispose();
     _activeIsolate = null;
+    strategies[_activeCategory]?.reset();
+    _activeCategory = null;
+    _sessionStabilizer?.reset();
+    _sessionStabilizer = null;
     stabilizer.reset();
     final controller = _controller;
     _controller = null;
