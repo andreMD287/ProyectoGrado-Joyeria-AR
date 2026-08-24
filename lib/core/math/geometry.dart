@@ -15,3 +15,55 @@ class Vec3 {
   String toString() =>
       'Vec3(${x.toStringAsFixed(4)}, ${y.toStringAsFixed(4)}, ${z.toStringAsFixed(4)})';
 }
+
+/// Punto normalizado (x, y ∈ [0,1]) en el espacio del *preview* de cámara
+/// (mismo sistema que usa el overlay de la prueba virtual).
+class NormalizedPoint {
+  final double x;
+  final double y;
+  const NormalizedPoint(this.x, this.y);
+}
+
+/// Traduce un landmark en píxeles de ML Kit al espacio normalizado del
+/// `CameraPreview`.
+///
+/// **Android:** corrige el intercambio de ejes con rotación 90°/270° (bug que
+/// producía coordenadas fuera de [0,1]) y el espejo de cámara frontal en 0°.
+/// Sigue el `coordinates_translator` del ejemplo oficial de `google_ml_kit_flutter`.
+///
+/// **iOS:** conserva el comportamiento previo (`pixelX / width`,
+/// `pixelY / height`), validado en dispositivo antes de este fix.
+NormalizedPoint normalizeMlKitLandmarkToPreview({
+  required double pixelX,
+  required double pixelY,
+  required int bufferWidth,
+  required int bufferHeight,
+  required int rotationDegrees,
+  required bool isFrontCamera,
+  required bool isIOS,
+}) {
+  final w = bufferWidth.toDouble();
+  final h = bufferHeight.toDouble();
+
+  // iOS: sin corrección de rotación/espejo (ya validado en iPhone).
+  if (isIOS) {
+    return NormalizedPoint(pixelX / w, pixelY / h);
+  }
+
+  final rotation = ((rotationDegrees % 360) + 360) % 360;
+
+  switch (rotation) {
+    case 90:
+      return NormalizedPoint(pixelX / h, pixelY / w);
+    case 270:
+      return NormalizedPoint(
+        1.0 - pixelX / h,
+        pixelY / w,
+      );
+    case 180:
+    case 0:
+    default:
+      final x = isFrontCamera ? 1.0 - pixelX / w : pixelX / w;
+      return NormalizedPoint(x, pixelY / h);
+  }
+}

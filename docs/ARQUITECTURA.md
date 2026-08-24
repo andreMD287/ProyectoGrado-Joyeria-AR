@@ -224,16 +224,16 @@ Toda sesión de tracking crea un `DetectionIsolate` con su propia instancia del 
 
 `OneEuroStabilizer` en `core/filters/` (promovido desde spike B4). Parámetros iniciales: `minCutoff=1.0`, `beta=0.02`, `dCutoff=1.0`. Kalman permanece solo en `spikes/B4-estabilizacion/` como evidencia comparativa.
 
-### 6.5 Espacio de coordenadas (deuda / defecto abierto)
+### 6.5 Espacio de coordenadas
 
 | Etapa | Contrato | Estado |
 |---|---|---|
-| Landmark (x, y) | Normalizado [0, 1] en el frame | **Roto en Face/Pose:** se divide por ancho/alto del buffer **sin compensar rotación del sensor**, lo que puede producir coordenadas fuera de [0,1] y desplazar aretes/collares |
-| Landmark (z) | Profundidad relativa | Pose deja `z` en escala cruda de ML Kit (no afecta el overlay 2D actual) |
+| Landmark (x, y) | Normalizado [0,1] en el espacio del preview | **Android** Face/Pose: `normalizeMlKitLandmarkToPreview` (swap 90°/270°, espejo frontal). **iOS:** división simple `x/w`, `y/h` (sin cambio). Manos: el plugin ya entrega [0,1]. |
+| Landmark (z) | Profundidad relativa | Pose deja `z` en escala cruda de ML Kit (no afecta el overlay 2D) |
 | Overlay | `left/top = position.x/y * areaSize` | Implementado en `TryOnScreen` |
-| Escala mm → tamaño en pantalla | Dimensiones del catálogo | **No implementado** (`geometry.dart` solo tiene `Vec3`) |
+| Escala mm → tamaño en pantalla | Dimensiones del catálogo | **No implementado** (`geometry.dart` tiene `Vec3` + normalización ML Kit) |
 
-Prioridad **Alta**: corregir normalización con rotación en Face/Pose y documentar la cadena completo como dominio (ver SDD §2.9).
+Pendiente de dominio: proyección a escala real en mm (ver SDD §2.9).
 
 ### 6.6 Pérdida de tracking (comportamiento actual)
 
@@ -346,7 +346,7 @@ No se replica la tabla aquí para evitar divergencia entre documentos.
 | 6 | Aretes y collares | ✅ Funcional en dispositivo (deuda §6.5 / precisión) |
 | 7 | Paridad iOS (manos) | ✅ Hecho |
 
-Pendiente de producto/arquitectura abierta: corrección del espacio de coordenadas (Alta), roll de pulsera (Alta), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5).
+Pendiente de producto/arquitectura abierta: roll de pulsera (Alta), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, escala mm del overlay, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5).
 
 ---
 

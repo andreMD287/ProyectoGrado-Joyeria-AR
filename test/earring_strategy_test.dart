@@ -23,7 +23,7 @@ List<Landmark> faceLandmarks({
 void main() {
   const strategy = EarringStrategy();
 
-  test('estima el lóbulo por debajo de la oreja en rostro frontal', () {
+  test('estima el lóbulo por debajo y hacia afuera de la oreja', () {
     final anchor = strategy.computeAnchor(faceLandmarks(
       leftEar: const Landmark(0.34, 0.52, 0.0, visibility: 1),
       rightEar: const Landmark(0.66, 0.52, 0.0, visibility: 1),
@@ -32,9 +32,21 @@ void main() {
     ));
 
     expect(anchor, isNotNull);
-    expect(anchor!.position.y, greaterThan(0.52)); // por debajo de la oreja
-    expect(anchor.position.x, closeTo(0.34, 1e-6)); // ancla la oreja izquierda
+    expect(anchor!.position.y, closeTo(0.52 + 0.32 * 0.16, 1e-6));
+    expect(anchor.position.x, lessThan(0.34));
     expect(anchor.rollRadians.abs(), lessThan(0.05));
+  });
+
+  test('oreja derecha empuja el anclaje hacia afuera (+X)', () {
+    final anchor = strategy.computeAnchor(faceLandmarks(
+      rightEar: const Landmark(0.66, 0.52, 0.0, visibility: 1),
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+    ));
+
+    expect(anchor, isNotNull);
+    expect(anchor!.position.x, greaterThan(0.66));
+    expect(anchor.position.y, greaterThan(0.52));
   });
 
   test('roll sigue la inclinación de la cabeza', () {

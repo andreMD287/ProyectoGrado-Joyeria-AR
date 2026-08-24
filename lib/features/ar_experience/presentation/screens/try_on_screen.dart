@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
 import '../../../../core/di/providers.dart';
+import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
@@ -201,9 +202,9 @@ class _CameraOverlay extends ConsumerWidget {
 
 /// Pieza 3D posicionada sobre el punto de anclaje normalizado (x, y ∈ [0,1]
 /// en el espacio del frame de cámara, igual que el widget de vista previa).
+/// El tamaño del overlay es por categoría. Los aretes se anclan por el **punto
+/// superior** del widget (como un piercing); pulsera/collar usan el centro.
 class _ModelOverlay extends ConsumerWidget {
-  static const double _size = 120;
-
   final JewelryPiece piece;
   final AnchorPose anchor;
   final Size areaSize;
@@ -214,27 +215,37 @@ class _ModelOverlay extends ConsumerWidget {
     required this.areaSize,
   });
 
+  double get _size => switch (piece.categoria) {
+        JewelryCategory.earring => 44,
+        JewelryCategory.necklace => 64,
+        JewelryCategory.bracelet => 72,
+      };
+
+  /// Aretes: el anclaje es el punto de perforación; el modelo cuelga hacia abajo.
+  bool get _anchorAtTop => piece.categoria == JewelryCategory.earring;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final modelAsset = ref.watch(_resolvedModelAssetProvider(piece.modeloGlb));
-    final maxLeft = math.max(0.0, areaSize.width - _size);
-    final maxTop = math.max(0.0, areaSize.height - _size);
-    final left =
-        (anchor.position.x * areaSize.width - _size / 2).clamp(0.0, maxLeft);
-    final top =
-        (anchor.position.y * areaSize.height - _size / 2).clamp(0.0, maxTop);
+    final size = _size;
+    final maxLeft = math.max(0.0, areaSize.width - size);
+    final maxTop = math.max(0.0, areaSize.height - size);
+    final anchorX = anchor.position.x * areaSize.width;
+    final anchorY = anchor.position.y * areaSize.height;
+    final left = (anchorX - size / 2).clamp(0.0, maxLeft);
+    final top = (_anchorAtTop ? anchorY : anchorY - size / 2).clamp(0.0, maxTop);
 
     return Positioned(
       left: left,
       top: top,
-      width: _size,
-      height: _size,
+      width: size,
+      height: size,
       child: modelAsset.when(
         loading: () => const SizedBox.shrink(),
         error: (error, stack) => const SizedBox.shrink(),
         data: (src) => IgnorePointer(
           child: ModelViewer(
-            key: const ValueKey('bracelet-model-viewer'),
+            key: ValueKey('model-${piece.categoria.id}-$size'),
             src: src,
             backgroundColor: Colors.transparent,
             cameraControls: false,

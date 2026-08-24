@@ -13,7 +13,7 @@ List<Landmark> poseWithShoulders(Landmark left, Landmark right) {
 void main() {
   const strategy = NecklaceStrategy();
 
-  test('ancla centrado y por debajo de los hombros en pose frontal', () {
+  test('ancla centrado cerca del cuello (poco drop bajo hombros)', () {
     final anchor = strategy.computeAnchor(poseWithShoulders(
       const Landmark(0.40, 0.50, 0.0, visibility: 0.96),
       const Landmark(0.60, 0.50, 0.0, visibility: 0.95),
@@ -21,7 +21,8 @@ void main() {
 
     expect(anchor, isNotNull);
     expect(anchor!.position.x, closeTo(0.5, 1e-9));
-    expect(anchor.position.y, greaterThan(0.50)); // desplazado hacia abajo
+    // width = 0.2, neckDropFactor = 0.06 → y = 0.50 + 0.012
+    expect(anchor.position.y, closeTo(0.512, 1e-9));
     expect(anchor.rollRadians.abs(), lessThan(0.05));
   });
 

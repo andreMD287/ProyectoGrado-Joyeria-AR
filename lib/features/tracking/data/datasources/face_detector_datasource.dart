@@ -1,19 +1,21 @@
+import 'dart:io' show Platform;
 import 'dart:ui' show Size;
 
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
+import '../../../../core/math/geometry.dart';
 import '../../domain/entities/landmark.dart';
 import 'landmark_detector.dart';
 
 /// Detector facial para aretes, basado en `google_mlkit_face_detection`
 /// (cross-platform). Habilita los landmarks del rostro y entrega —en el orden
 /// que espera `EarringStrategy`— oreja izq (0), oreja der (1), ojo izq (2) y
-/// ojo der (3), normalizados a [0,1].
+/// ojo der (3), normalizados a [0,1] en el espacio del `CameraPreview`
+/// (ver [normalizeMlKitLandmarkToPreview]).
 ///
-/// La conversión `CameraImage → InputImage` sigue el patrón oficial de ML Kit y
-/// queda **pendiente de validación en dispositivo** (Android `nv21`, iOS
-/// `bgra8888`, rotación según `sensorOrientation`).
+/// Aretes usan siempre la cámara **frontal**. En Android la normalización
+/// compensa rotación del sensor; en iOS se mantiene la división simple previa.
 class FaceDetectorDataSource implements LandmarkDetector {
   final FaceDetector _detector = FaceDetector(
     options: FaceDetectorOptions(enableLandmarks: true),
@@ -33,7 +35,12 @@ class FaceDetectorDataSource implements LandmarkDetector {
     final faces = await _detector.processImage(input);
     if (faces.isEmpty) return const [];
 
-    return _mapFace(faces.first, frame.width, frame.height);
+    return _mapFace(
+      faces.first,
+      frame.width,
+      frame.height,
+      sensorOrientation,
+    );
   }
 
   @override
@@ -41,14 +48,25 @@ class FaceDetectorDataSource implements LandmarkDetector {
     await _detector.close();
   }
 
-  List<Landmark> _mapFace(Face face, int width, int height) {
-    final w = width.toDouble();
-    final h = height.toDouble();
-
+  List<Landmark> _mapFace(
+    Face face,
+    int width,
+    int height,
+    int sensorOrientation,
+  ) {
     Landmark of(FaceLandmarkType type) {
       final lm = face.landmarks[type];
       if (lm == null) return const Landmark(0, 0, 0, visibility: 0);
-      return Landmark(lm.position.x / w, lm.position.y / h, 0, visibility: 1);
+      final n = normalizeMlKitLandmarkToPreview(
+        pixelX: lm.position.x.toDouble(),
+        pixelY: lm.position.y.toDouble(),
+        bufferWidth: width,
+        bufferHeight: height,
+        rotationDegrees: sensorOrientation,
+        isFrontCamera: true,
+        isIOS: Platform.isIOS,
+      );
+      return Landmark(n.x, n.y, 0, visibility: 1);
     }
 
     return [

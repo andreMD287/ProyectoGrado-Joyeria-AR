@@ -360,7 +360,7 @@ Esta matriz **no existe en Flutter**; es un artefacto de arquitectura del produc
 | ADR-11 | Fallback a modelo *placeholder* | No acoplar D2 (modelado 3D) al cierre del pipeline | Bloquear prueba virtual hasta tener GLB reales |
 | ADR-12 | Throttling ≤10 FPS de detección | Alinear tasa de ML con capacidad del isolate | Procesar todos los frames de cámara |
 
-## 2.9. Espacio de coordenadas (dominio de joyería — prioridad Alta)
+## 2.9. Espacio de coordenadas (dominio de joyería)
 
 En una aplicación de prueba virtual de joyería, la cadena de coordenadas **es dominio**, no un detalle de infraestructura:
 
@@ -371,12 +371,9 @@ píxeles del detector (buffer + rotación del sensor)
       → escala real (dimensiones_mm del catálogo)   [pendiente]
 ```
 
-**Defecto abierto (verificado en código):** `FaceDetectorDataSource` y `PoseDetectorDataSource` normalizan `x/y` como `position / width|height` **sin compensar la rotación del sensor**. Eso puede producir valores fuera de [0,1] (p. ej. 1.19–1.35) y desplazar el anclaje de aretes y collares. El contrato de `Landmark` declara [0,1]; el adapter lo viola.
+**Corrección aplicada (normalización Face/Pose, solo Android):** `normalizeMlKitLandmarkToPreview` en `core/math/geometry.dart` — en Android con rotación 90°/270° usa dimensiones intercambiadas; espejo X en cámara frontal para 0°/180°. **iOS** conserva la división simple `pixelX/width`, `pixelY/height` (validado en iPhone antes del fix). Tests: `test/geometry_normalize_test.dart`.
 
-**Por qué es Alta:** afecta precisión percibida de dos de tres categorías; además es el artefacto más “propio del producto” que refuerza la tesis del SDD (no sale de una plantilla Flutter).
-
-**Corrección esperada:** proyectar landmarks al espacio del preview considerando `sensorOrientation` (y espejo de cámara frontal si aplica); tests unitarios con casos 0°/90°/270°; documentar en `geometry.dart` las funciones de proyección (hoy solo existe `Vec3`).
-
+**Pendiente:** proyección a escala real en mm (`dimensiones_mm` del catálogo) y uso de `z` normalizado si se profundiza el render.
 ---
 
 # Parte C — Integración: qué de Flutter usa la aplicación y cómo se relacionan
@@ -436,7 +433,7 @@ flowchart LR
 
 | Prioridad | Cambio | Estado |
 |---|---|---|
-| **Alta** | **Corregir** normalización Face/Pose con rotación del sensor + tests; elevar `geometry` a proyecciones de dominio (§2.9) | Defecto abierto; documentado |
+| **Alta** | ~~**Corregir** normalización Face/Pose con rotación del sensor + tests~~ → hecho (`normalizeMlKitLandmarkToPreview`). Resta elevar proyección **mm** en `geometry` | Normalización [0,1] cerrada; escala real pendiente |
 | **Alta** | Implementar política de degradación §2.6.2 (TTL *hold*, umbral 0.5 unificado, UI “Detectando…”) | Política escrita; código aún retiene pose indefinida |
 | **Alta** | Estimar `rollRadians` en `BraceletStrategy` (p. ej. desde muñeca + landmarks vecinos de la mano) para que la pulsera rote con el giro de la muñeca | Hoy `rollRadians = 0`; aretes/collares sí estiman roll — asimetría de realismo entre categorías |
 | Alta | Medir en dispositivo los umbrales de EC-03 (px / ms) del protocolo de precisión | Escenario escrito; números de campo pendientes |
@@ -470,5 +467,6 @@ flowchart LR
 - [x] Escenarios de calidad con medida (§2.6.1).
 - [x] Política de degradación explícita (§2.6.2).
 - [x] Espacio de coordenadas como dominio + defecto abierto (§2.9).
+- [x] Corrección de normalización Face/Pose cerrada en código.
 - [ ] EC-03 medido en dispositivo (protocolo de precisión).
-- [ ] Corrección de normalización Face/Pose cerrada en código.
+- [ ] Escala mm → overlay.
