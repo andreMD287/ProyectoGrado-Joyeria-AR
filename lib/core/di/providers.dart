@@ -37,10 +37,10 @@ final catalogRepositoryProvider = Provider<CatalogRepository>(
 /// dedicado por sesión de tracking (ver `DetectionIsolate`), no aquí.
 final trackingStrategiesProvider =
     Provider<Map<JewelryCategory, TrackingStrategy>>((ref) {
-  return const {
-    JewelryCategory.bracelet: BraceletStrategy(),
+  return {
+    JewelryCategory.bracelet: const BraceletStrategy(),
     JewelryCategory.earring: EarringStrategy(),
-    JewelryCategory.necklace: NecklaceStrategy(),
+    JewelryCategory.necklace: const NecklaceStrategy(),
   };
 });
 

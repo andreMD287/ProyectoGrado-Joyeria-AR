@@ -200,10 +200,8 @@ class _CameraOverlay extends ConsumerWidget {
   }
 }
 
-/// Pieza 3D posicionada sobre el punto de anclaje normalizado (x, y ∈ [0,1]
-/// en el espacio del frame de cámara, igual que el widget de vista previa).
-/// El tamaño del overlay es por categoría. Los aretes se anclan por el **punto
-/// superior** del widget (como un piercing); pulsera/collar usan el centro.
+/// Pieza 3D sobre el anclaje. Aretes: overlay pequeño **centrado** en el lóbulo
+/// (el placeholder es engañoso si cuelga desde arriba) + punto de debug.
 class _ModelOverlay extends ConsumerWidget {
   final JewelryPiece piece;
   final AnchorPose anchor;
@@ -216,13 +214,10 @@ class _ModelOverlay extends ConsumerWidget {
   });
 
   double get _size => switch (piece.categoria) {
-        JewelryCategory.earring => 44,
+        JewelryCategory.earring => 32,
         JewelryCategory.necklace => 64,
         JewelryCategory.bracelet => 72,
       };
-
-  /// Aretes: el anclaje es el punto de perforación; el modelo cuelga hacia abajo.
-  bool get _anchorAtTop => piece.categoria == JewelryCategory.earring;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -233,29 +228,47 @@ class _ModelOverlay extends ConsumerWidget {
     final anchorX = anchor.position.x * areaSize.width;
     final anchorY = anchor.position.y * areaSize.height;
     final left = (anchorX - size / 2).clamp(0.0, maxLeft);
-    final top = (_anchorAtTop ? anchorY : anchorY - size / 2).clamp(0.0, maxTop);
+    final top = (anchorY - size / 2).clamp(0.0, maxTop);
 
-    return Positioned(
-      left: left,
-      top: top,
-      width: size,
-      height: size,
-      child: modelAsset.when(
-        loading: () => const SizedBox.shrink(),
-        error: (error, stack) => const SizedBox.shrink(),
-        data: (src) => IgnorePointer(
-          child: ModelViewer(
-            key: ValueKey('model-${piece.categoria.id}-$size'),
-            src: src,
-            backgroundColor: Colors.transparent,
-            cameraControls: false,
-            disableZoom: true,
-            disablePan: true,
-            disableTap: true,
-            autoRotate: false,
+    return Stack(
+      children: [
+        Positioned(
+          left: left,
+          top: top,
+          width: size,
+          height: size,
+          child: modelAsset.when(
+            loading: () => const SizedBox.shrink(),
+            error: (error, stack) => const SizedBox.shrink(),
+            data: (src) => IgnorePointer(
+              child: ModelViewer(
+                key: ValueKey('model-${piece.categoria.id}-$size'),
+                src: src,
+                backgroundColor: Colors.transparent,
+                cameraControls: false,
+                disableZoom: true,
+                disablePan: true,
+                disableTap: true,
+                autoRotate: false,
+              ),
+            ),
           ),
         ),
-      ),
+        // Punto exacto de anclaje (ayuda a juzgar el lóbulo vs. el tamaño del GLB).
+        if (piece.categoria == JewelryCategory.earring)
+          Positioned(
+            left: (anchorX - 4).clamp(0.0, areaSize.width - 8),
+            top: (anchorY - 4).clamp(0.0, areaSize.height - 8),
+            width: 8,
+            height: 8,
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                color: Color(0xFFE91E63),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

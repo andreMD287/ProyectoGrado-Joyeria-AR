@@ -6,37 +6,43 @@ import '../entities/anchor_pose.dart';
 import '../entities/landmark.dart';
 import 'tracking_strategy.dart';
 
-/// Aretes: ancla en el lóbulo, estimado a partir de los landmarks de rostro.
+/// Aretes: ancla en el lóbulo.
 ///
-/// ML Kit no expone lóbulo: entrega la **oreja** (cerca del tragus) y los ojos.
-/// El lóbulo se estima en **espacio del preview de cámara** (y crece hacia
-/// abajo), no en el eje “abajo” del rostro: en Android portrait ese eje puede
-/// apuntar hacia arriba en pantalla y dejar el modelo sobre la oreja.
+/// De frente, los landmarks de oreja de ML Kit son inestables (aparecen /
+/// desaparecen) y alternar izq/der hace que el modelo salte por toda la cara.
+/// Por eso el anclaje primario son los puntos derivados del **bounding box**
+/// del rostro (índices 6 y 7), con un lado **bloqueado** durante la sesión.
 ///
-/// - [dropFactor]: hacia abajo en el preview (+Y).
-/// - [outwardFactor]: hacia afuera en X (oreja izq → −X, oreja der → +X).
-///
-/// Orden fijo del `FaceDetectorDataSource`:
-/// 0 = oreja izq · 1 = oreja der · 2 = ojo izq · 3 = ojo der.
+/// Orden del `FaceDetectorDataSource`:
+/// 0–1 orejas · 2–3 ojos · 4–5 mejillas · 6–7 lóbulos bbox.
 class EarringStrategy implements TrackingStrategy {
   static const int leftEar = 0;
   static const int rightEar = 1;
   static const int leftEye = 2;
   static const int rightEye = 3;
+  static const int leftCheek = 4;
+  static const int rightCheek = 5;
+  static const int leftBBoxLobe = 6;
+  static const int rightBBoxLobe = 7;
 
-  final double dropFactor;
-  final double outwardFactor;
+  /// 0 = izquierdo (bbox/oreja izq de ML Kit), 1 = derecho. Null = aún no fijado.
+  int? _lockedSide;
+  int _missFrames = 0;
+  static const int _maxMissBeforeUnlock = 8;
 
-  const EarringStrategy({
-    this.dropFactor = 0.32,
-    this.outwardFactor = 0.28,
-  });
+  EarringStrategy();
 
   @override
   JewelryCategory get category => JewelryCategory.earring;
 
   @override
   DetectorKind get detectorKind => DetectorKind.face;
+
+  @override
+  void reset() {
+    _lockedSide = null;
+    _missFrames = 0;
+  }
 
   bool _present(Landmark lm) => (lm.visibility ?? 0) > 0;
 
@@ -47,30 +53,83 @@ class EarringStrategy implements TrackingStrategy {
     final re = landmarks[rightEye];
     if (!_present(le) || !_present(re)) return null;
 
-    final bool useLeft = _present(landmarks[leftEar]);
-    final Landmark? ear = useLeft
-        ? landmarks[leftEar]
-        : (_present(landmarks[rightEar]) ? landmarks[rightEar] : null);
-    if (ear == null) return null;
-
     final dx = re.x - le.x;
     final dy = re.y - le.y;
     final interocular = math.sqrt(dx * dx + dy * dy);
     if (interocular <= 0) return null;
-
     final roll = math.atan2(dy, dx);
-    final drop = dropFactor * interocular;
-    final out = outwardFactor * interocular;
-    final outwardX = useLeft ? -out : out;
+
+    final side = _resolveSide(landmarks);
+    if (side == null) return null;
+
+    final lobe = _lobeForSide(landmarks, side);
+    if (lobe == null) {
+      _missFrames++;
+      if (_missFrames >= _maxMissBeforeUnlock) {
+        _lockedSide = null;
+        _missFrames = 0;
+      }
+      return null;
+    }
+    _missFrames = 0;
+    _lockedSide = side;
+
+    // Empuje ligero hacia afuera + un poco más abajo (centro oreja → lóbulo).
+    final outward = (side == 0 ? -1.0 : 1.0) * 0.08 * interocular;
+    final down = 0.04 * interocular;
 
     return AnchorPose(
-      position: Vec3(
-        ear.x + outwardX,
-        ear.y + drop,
-        ear.z,
-      ),
+      position: Vec3(lobe.x + outward, lobe.y + down, lobe.z),
       rollRadians: roll,
-      confidence: 1,
+      confidence: lobe.visibility ?? 1,
     );
+  }
+
+  int? _resolveSide(List<Landmark> landmarks) {
+    if (_lockedSide != null) return _lockedSide;
+
+    // Preferir el lado cuyo lóbulo bbox existe; si ambos, el de mayor |x-0.5|
+    // (más lateral = oreja más visible).
+    final hasL = landmarks.length > leftBBoxLobe &&
+        _present(landmarks[leftBBoxLobe]);
+    final hasR = landmarks.length > rightBBoxLobe &&
+        _present(landmarks[rightBBoxLobe]);
+    if (hasL && hasR) {
+      final ld = (landmarks[leftBBoxLobe].x - 0.5).abs();
+      final rd = (landmarks[rightBBoxLobe].x - 0.5).abs();
+      return ld >= rd ? 0 : 1;
+    }
+    if (hasL) return 0;
+    if (hasR) return 1;
+
+    // Fallback: oreja ML Kit.
+    if (_present(landmarks[leftEar])) return 0;
+    if (_present(landmarks[rightEar])) return 1;
+    return null;
+  }
+
+  Landmark? _lobeForSide(List<Landmark> landmarks, int side) {
+    final bboxIdx = side == 0 ? leftBBoxLobe : rightBBoxLobe;
+    if (landmarks.length > bboxIdx && _present(landmarks[bboxIdx])) {
+      return landmarks[bboxIdx];
+    }
+    // Refinar con mejilla si el bbox falta: mejilla + empuje afuera.
+    final cheekIdx = side == 0 ? leftCheek : rightCheek;
+    final eyeIdx = side == 0 ? leftEye : rightEye;
+    if (landmarks.length > cheekIdx &&
+        _present(landmarks[cheekIdx]) &&
+        _present(landmarks[eyeIdx])) {
+      final cheek = landmarks[cheekIdx];
+      final eye = landmarks[eyeIdx];
+      final inter = math.sqrt(
+        math.pow(landmarks[rightEye].x - landmarks[leftEye].x, 2) +
+            math.pow(landmarks[rightEye].y - landmarks[leftEye].y, 2),
+      );
+      final out = (side == 0 ? -1.0 : 1.0) * 0.45 * inter;
+      return Landmark(cheek.x + out, eye.y + 0.35 * inter, 0, visibility: 1);
+    }
+    final earIdx = side == 0 ? leftEar : rightEar;
+    if (_present(landmarks[earIdx])) return landmarks[earIdx];
+    return null;
   }
 }

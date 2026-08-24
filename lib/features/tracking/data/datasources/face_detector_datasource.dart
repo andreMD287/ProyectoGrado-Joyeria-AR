@@ -8,14 +8,14 @@ import '../../../../core/math/geometry.dart';
 import '../../domain/entities/landmark.dart';
 import 'landmark_detector.dart';
 
-/// Detector facial para aretes, basado en `google_mlkit_face_detection`
-/// (cross-platform). Habilita los landmarks del rostro y entrega —en el orden
-/// que espera `EarringStrategy`— oreja izq (0), oreja der (1), ojo izq (2) y
-/// ojo der (3), normalizados a [0,1] en el espacio del `CameraPreview`
-/// (ver [normalizeMlKitLandmarkToPreview]).
+/// Detector facial para aretes (`google_mlkit_face_detection`).
 ///
-/// Aretes usan siempre la cámara **frontal**. En Android la normalización
-/// compensa rotación del sensor; en iOS se mantiene la división simple previa.
+/// Orden fijo para `EarringStrategy`:
+/// 0 oreja izq · 1 oreja der · 2 ojo izq · 3 ojo der · 4 mejilla izq ·
+/// 5 mejilla der · 6 lóbulo izq (bbox) · 7 lóbulo der (bbox).
+///
+/// Los puntos 6/7 salen del [Face.boundingBox] (muy estables de frente); las
+/// orejas de ML Kit parpadean y hacen saltar el anclaje de un lado a otro.
 class FaceDetectorDataSource implements LandmarkDetector {
   final FaceDetector _detector = FaceDetector(
     options: FaceDetectorOptions(enableLandmarks: true),
@@ -54,26 +54,41 @@ class FaceDetectorDataSource implements LandmarkDetector {
     int height,
     int sensorOrientation,
   ) {
-    Landmark of(FaceLandmarkType type) {
-      final lm = face.landmarks[type];
-      if (lm == null) return const Landmark(0, 0, 0, visibility: 0);
+    Landmark ofPixel(double px, double py, {double visibility = 1}) {
       final n = normalizeMlKitLandmarkToPreview(
-        pixelX: lm.position.x.toDouble(),
-        pixelY: lm.position.y.toDouble(),
+        pixelX: px,
+        pixelY: py,
         bufferWidth: width,
         bufferHeight: height,
         rotationDegrees: sensorOrientation,
         isFrontCamera: true,
         isIOS: Platform.isIOS,
       );
-      return Landmark(n.x, n.y, 0, visibility: 1);
+      return Landmark(n.x, n.y, 0, visibility: visibility);
     }
+
+    Landmark of(FaceLandmarkType type) {
+      final lm = face.landmarks[type];
+      if (lm == null) return const Landmark(0, 0, 0, visibility: 0);
+      return ofPixel(lm.position.x.toDouble(), lm.position.y.toDouble());
+    }
+
+    // Lóbulo ≈ borde lateral a ~64% de la altura del rostro (bajo el centro
+    // de la oreja; 0.58 quedaba entre hélix y lóbulo).
+    final box = face.boundingBox;
+    final lobeY = box.top + box.height * 0.64;
+    final leftBBoxLobe = ofPixel(box.left, lobeY);
+    final rightBBoxLobe = ofPixel(box.right, lobeY);
 
     return [
       of(FaceLandmarkType.leftEar), // 0
       of(FaceLandmarkType.rightEar), // 1
       of(FaceLandmarkType.leftEye), // 2
       of(FaceLandmarkType.rightEye), // 3
+      of(FaceLandmarkType.leftCheek), // 4
+      of(FaceLandmarkType.rightCheek), // 5
+      leftBBoxLobe, // 6
+      rightBBoxLobe, // 7
     ];
   }
 

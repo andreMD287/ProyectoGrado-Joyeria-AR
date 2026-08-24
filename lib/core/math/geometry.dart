@@ -27,12 +27,13 @@ class NormalizedPoint {
 /// Traduce un landmark en píxeles de ML Kit al espacio normalizado del
 /// `CameraPreview`.
 ///
-/// **Android:** corrige el intercambio de ejes con rotación 90°/270° (bug que
-/// producía coordenadas fuera de [0,1]) y el espejo de cámara frontal en 0°.
-/// Sigue el `coordinates_translator` del ejemplo oficial de `google_ml_kit_flutter`.
+/// **Android:** corrige el intercambio de ejes con rotación 90°/270° (mismo
+/// criterio con el que el collar quedó bien). Espejo frontal solo en 0°/180°.
 ///
-/// **iOS:** conserva el comportamiento previo (`pixelX / width`,
-/// `pixelY / height`), validado en dispositivo antes de este fix.
+/// **iOS:** división simple `pixelX/width`, `pixelY/height` (sin cambios).
+///
+/// Nota: no se aplica espejo frontal en 90° — eso desalineó el overlay del
+/// preview y hacía “flotar” el anclaje por toda la pantalla.
 NormalizedPoint normalizeMlKitLandmarkToPreview({
   required double pixelX,
   required double pixelY,
@@ -45,25 +46,18 @@ NormalizedPoint normalizeMlKitLandmarkToPreview({
   final w = bufferWidth.toDouble();
   final h = bufferHeight.toDouble();
 
-  // iOS: sin corrección de rotación/espejo (ya validado en iPhone).
   if (isIOS) {
     return NormalizedPoint(pixelX / w, pixelY / h);
   }
 
   final rotation = ((rotationDegrees % 360) + 360) % 360;
 
-  switch (rotation) {
-    case 90:
-      return NormalizedPoint(pixelX / h, pixelY / w);
-    case 270:
-      return NormalizedPoint(
-        1.0 - pixelX / h,
-        pixelY / w,
-      );
-    case 180:
-    case 0:
-    default:
-      final x = isFrontCamera ? 1.0 - pixelX / w : pixelX / w;
-      return NormalizedPoint(x, pixelY / h);
-  }
+  return switch (rotation) {
+    90 => NormalizedPoint(pixelX / h, pixelY / w),
+    270 => NormalizedPoint(1.0 - pixelX / h, pixelY / w),
+    _ => NormalizedPoint(
+        isFrontCamera ? 1.0 - pixelX / w : pixelX / w,
+        pixelY / h,
+      ),
+  };
 }
