@@ -51,7 +51,8 @@ En iOS, tras cambios en dependencias: `pod install` desde `ios/`.
 
 | Documento | Contenido |
 |---|---|
-| [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) | Arquitectura de la aplicación. |
+| [`docs/SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md`](docs/SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md) | SDD §2.3: Flutter vs. arquitectura propia, patrones, tácticas y ADR. |
+| [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) | Arquitectura técnica interna (carpetas, pipeline, adopción). |
 | [`docs/TAREAS_PENDIENTES.md`](docs/TAREAS_PENDIENTES.md) | Tareas preparatorias (frentes A–E). |
 | [`docs/D1_PIPELINE_DIGITALIZACION.md`](docs/D1_PIPELINE_DIGITALIZACION.md) | Pipeline de digitalización de piezas (GLB/PBR). |
 | [`docs/D3_ESTRUCTURA_CATALOGO.md`](docs/D3_ESTRUCTURA_CATALOGO.md) | Estructura del catálogo y metadatos. |
