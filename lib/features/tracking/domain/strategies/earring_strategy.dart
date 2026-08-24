@@ -7,18 +7,17 @@ import '../entities/landmark.dart';
 import 'tracking_strategy.dart';
 
 /// Aretes: ancla en el lóbulo, estimado a partir de los landmarks de rostro.
-/// Validado en el spike B3.
 ///
-/// ML Kit Face Detection no expone un landmark de lóbulo: entrega la posición de
-/// la **oreja** y los ojos. El lóbulo se estima desplazando la oreja hacia abajo
-/// —a lo largo del eje vertical del rostro (perpendicular a la línea de ojos)—
-/// una fracción [dropFactor] de la distancia interocular.
+/// ML Kit no expone lóbulo: entrega la **oreja** (cerca del tragus) y los ojos.
+/// El lóbulo se estima en **espacio del preview de cámara** (y crece hacia
+/// abajo), no en el eje “abajo” del rostro: en Android portrait ese eje puede
+/// apuntar hacia arriba en pantalla y dejar el modelo sobre la oreja.
 ///
-/// El `FaceDetectorDataSource` entrega los landmarks en este orden fijo:
+/// - [dropFactor]: hacia abajo en el preview (+Y).
+/// - [outwardFactor]: hacia afuera en X (oreja izq → −X, oreja der → +X).
+///
+/// Orden fijo del `FaceDetectorDataSource`:
 /// 0 = oreja izq · 1 = oreja der · 2 = ojo izq · 3 = ojo der.
-///
-/// La interfaz devuelve una sola [AnchorPose] (la oreja disponible); anclar
-/// ambos aretes a la vez requerirá un resultado con múltiples anclajes (futuro).
 class EarringStrategy implements TrackingStrategy {
   static const int leftEar = 0;
   static const int rightEar = 1;
@@ -26,8 +25,12 @@ class EarringStrategy implements TrackingStrategy {
   static const int rightEye = 3;
 
   final double dropFactor;
+  final double outwardFactor;
 
-  const EarringStrategy({this.dropFactor = 0.45});
+  const EarringStrategy({
+    this.dropFactor = 0.32,
+    this.outwardFactor = 0.28,
+  });
 
   @override
   JewelryCategory get category => JewelryCategory.earring;
@@ -44,8 +47,8 @@ class EarringStrategy implements TrackingStrategy {
     final re = landmarks[rightEye];
     if (!_present(le) || !_present(re)) return null;
 
-    // Oreja disponible (se prioriza la izquierda como ancla determinista).
-    final Landmark? ear = _present(landmarks[leftEar])
+    final bool useLeft = _present(landmarks[leftEar]);
+    final Landmark? ear = useLeft
         ? landmarks[leftEar]
         : (_present(landmarks[rightEar]) ? landmarks[rightEar] : null);
     if (ear == null) return null;
@@ -56,12 +59,16 @@ class EarringStrategy implements TrackingStrategy {
     if (interocular <= 0) return null;
 
     final roll = math.atan2(dy, dx);
-    final downX = -math.sin(roll);
-    final downY = math.cos(roll);
     final drop = dropFactor * interocular;
+    final out = outwardFactor * interocular;
+    final outwardX = useLeft ? -out : out;
 
     return AnchorPose(
-      position: Vec3(ear.x + downX * drop, ear.y + downY * drop, ear.z),
+      position: Vec3(
+        ear.x + outwardX,
+        ear.y + drop,
+        ear.z,
+      ),
       rollRadians: roll,
       confidence: 1,
     );
