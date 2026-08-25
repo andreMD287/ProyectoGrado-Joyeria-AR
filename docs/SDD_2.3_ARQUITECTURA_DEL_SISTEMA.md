@@ -2,7 +2,7 @@
 
 **Documento:** Software Design Description (SDD) · Sección 2.3  
 **Producto:** Visualización virtual de joyería con Realidad Aumentada  
-**Última actualización:** 2026-08-23  
+**Última actualización:** 2026-08-25  
 **Relacionado:** [`ARQUITECTURA.md`](ARQUITECTURA.md) (detalle *as-built* interno; **sin** tabla ADR duplicada), [`TAREAS_PENDIENTES.md`](TAREAS_PENDIENTES.md)
 
 > **Criterio de esta sección (exigencia del SDD):** debe quedar explícito qué pertenece a la **arquitectura del framework Flutter** (genérica, heredada) y qué pertenece a la **arquitectura diseñada para esta aplicación de joyería**. Cada decisión de diseño incluye su justificación (*por qué*).
@@ -131,7 +131,7 @@ A diferencia de una app Flutter genérica (CRUD + pantallas), el diseño se orga
 
 ## 2.2. Estilo arquitectónico elegido
 
-**Clean Architecture con organización *feature-first***, implementada en Dart/Flutter.
+**Clean Architecture con organización *feature-first***, complementada con un **estilo microkernel (*plugin*)** sobre el pipeline de prueba virtual. Ambas se implementan en Dart/Flutter y no se sustituyen: las capas fijan *hacia dónde* apuntan las dependencias; el microkernel fija *qué es invariante* y *qué se enchufa* cuando cambia la categoría de joya o la plataforma.
 
 | Capa | Contenido en este producto | Regla |
 |---|---|---|
@@ -143,6 +143,63 @@ A diferencia de una app Flutter genérica (CRUD + pantallas), el diseño se orga
 **Por qué Clean Architecture *feature-first* y no “capas globales”:** el equipo es de cuatro personas y el dominio se parte naturalmente en *catálogo*, *tracking* y *experiencia AR*. Cada feature puede evolucionar sin reescribir las otras, siempre que respete contratos de dominio.
 
 **Por qué no basta con “arquitectura Flutter”:** el framework solo organiza UI y plugins; no impone fronteras de dominio, estrategias de anclaje ni aislamiento de detectores por plataforma.
+
+### 2.2.1. Por qué también microkernel (núcleo + plugins)
+
+Clean Architecture por sí sola no responde a la variación del dominio: pulsera, arete y collar exigen **detectores, lentes y geometrías de anclaje distintas** (matriz §2.7), pero **la sesión es la misma** (permiso → cámara → detección → pose → overlay). Un diseño solo en capas dejaría esa variación dentro de un servicio monolítico. Por eso, sobre las capas se aplica el estilo **microkernel** (Bass et al.: servicios comunes en un núcleo + funcionalidad variable en *plugins* con contrato fijo).
+
+El patrón *Strategy* (§2.5, ADR-04) y los *Adapter* de detector (ADR-05) **no son el estilo**; son el mecanismo con el que se instancian los plugins. El estilo es la separación núcleo / extensión.
+
+```mermaid
+flowchart LR
+    subgraph KERNEL["Núcleo — invariante entre categorías"]
+        SES[TryOnController]
+        CAM[Cámara / permisos]
+        ISO[DetectionIsolate]
+        PIPE[Pipeline + One Euro]
+    end
+    subgraph CONTRACT["Contrato de plugin"]
+        STR[TrackingStrategy]
+        DET[LandmarkDetector]
+    end
+    subgraph PLUGINS["Plugins — varían por categoría y SO"]
+        B[BraceletStrategy]
+        E[EarringStrategy]
+        N[NecklaceStrategy]
+        AH[AndroidHand / IosHand]
+        F[Face]
+        P[Pose]
+    end
+    SES --> CAM
+    SES --> PIPE
+    PIPE --> ISO
+    ISO --> DET
+    PIPE --> STR
+    STR --- B
+    STR --- E
+    STR --- N
+    DET --- AH
+    DET --- F
+    DET --- P
+```
+
+| Rol en el estilo | En este producto | Por qué pertenece ahí |
+|---|---|---|
+| **Núcleo (*kernel*)** | Sesión de prueba: `TryOnController`, `CameraService`, `DetectionIsolate`, tubería frame → pose, One Euro | Invariante para las tres categorías: siempre hay que capturar, detectar, estabilizar y pintar. |
+| **Contrato de plugin** | `TrackingStrategy.computeAnchor` y `LandmarkDetector.detect` | El núcleo no conoce muñeca, lóbulo ni hombros; solo consume `AnchorPose` / `List<Landmark>`. |
+| **Plugins** | `BraceletStrategy`, `EarringStrategy`, `NecklaceStrategy`; adapters de manos (Android/iOS), Face y Pose | Cada categoría —y cada SO en manos— se añade o sustituye sin reescribir el pipeline. |
+| **Registro** | Mapa categoría → estrategia en DI (`trackingStrategiesProvider`) | Punto de extensión: nueva categoría = nueva estrategia registrada, no un `switch` en el núcleo. |
+
+**Por qué microkernel y no solo capas ni un servicio AR único:**
+
+| Alternativa descartada | Por qué no |
+|---|---|
+| Un `if` / `switch` por categoría en un *god class* de AR | Rompe modificabilidad: cada joya nueva toca el núcleo (ADR-04). |
+| Tres pipelines independientes (uno por categoría) | Duplica cámara, isolate, filtro y ciclo de vida de la sesión. |
+| Microservicios / procesos separados | Desproporcionado para un binario móvil con catálogo local. |
+| Carga dinámica de plugins en runtime | Innecesaria en un APK/IPA: las categorías del producto son conocidas en compilación. |
+
+**Alcance del estilo (criterio académico):** los plugins se **registran en tiempo de compilación** vía inyección de dependencias, no se cargan dinámicamente como en un sistema operativo. Ese es el uso habitual del estilo en aplicaciones (*plugin architecture*), no un micronúcleo de SO. El núcleo tampoco es “mínimo absoluto”: isolate y One Euro viven ahí porque son **servicios comunes a todas las categorías**, no variación.
 
 ## 2.3. Vistas de arquitectura (4+1 ligeras, aterrizadas al producto)
 
@@ -241,7 +298,7 @@ Cada patrón está **instanciado en el código** o propuesto como evolución inm
 
 | Patrón | Dónde vive | Problema del dominio que resuelve | Por qué (y no otra cosa) |
 |---|---|---|---|
-| **Strategy** | `TrackingStrategy` + `BraceletStrategy` / `EarringStrategy` / `NecklaceStrategy` | Tres categorías con anclaje anatómicamente distinto | Evita un `switch` monolítico; añadir categoría = nueva estrategia. Alternativa descartada: un solo servicio con `if` por categoría (frágil y no testeable por unidad de anclaje). |
+| **Strategy** | `TrackingStrategy` + `BraceletStrategy` / `EarringStrategy` / `NecklaceStrategy` | Tres categorías con anclaje anatómicamente distinto | Instancia los *plugins* del microkernel (§2.2.1): añadir categoría = nueva estrategia, sin tocar el núcleo. Alternativa descartada: un solo servicio con `if` por categoría (frágil y no testeable por unidad de anclaje). |
 | **Adapter** | `AndroidHandDetector`, `IosHandDetector`, `FaceDetectorDataSource`, `PoseDetectorDataSource` frente a `LandmarkDetector` | Plugins y APIs nativas incompatibles entre sí y entre SO | El dominio solo ve `List<Landmark>`. Alternativa descartada: acoplar `TryOnScreen` a `hand_landmarker` (imposible en iOS). |
 | **Repository** | `CatalogRepository`, `TrackingRepository` | Aislar origen de datos (JSON local hoy; remoto mañana) y origen de poses | Frontera evolutiva. Alternativa descartada: leer `catalog.json` desde la UI. |
 | **Pipes and Filters** (pipeline) | `TrackingRepositoryImpl`: frame → detect → computeAnchor → stabilize → emitir | El tracking es una tubería de transformaciones sobre el frame | Hace explícitas las etapas medibles (latencia, FPS). Alternativa descartada: “god class” de AR que mezcla cámara, ML y UI. |
@@ -271,7 +328,7 @@ Las *tácticas* (Bass et al.) conectan **drivers de calidad** con mecanismos con
 | Táctica | Mecanismo | Por qué |
 |---|---|---|
 | **Ocultar información** | Interfaces `LandmarkDetector`, `TrackingStrategy`, repositorios | Cambiar ML Kit ↔ Face Mesh o JSON ↔ API no rompe dominio. |
-| **Punto de extensión** | Mapa categoría → estrategia en DI | Nueva categoría de joya sin editar el pipeline. |
+| **Punto de extensión** | Mapa categoría → estrategia en DI | Nueva categoría de joya sin editar el pipeline (registro de plugins del microkernel, §2.2.1). |
 | **Anticipar cambios de datos** | Catálogo detrás de `CatalogRepository` | Semestre actual: local; futuro: remoto sin tocar UI. |
 
 ### Portabilidad Android / iOS
@@ -348,7 +405,7 @@ Esta matriz **no existe en Flutter**; es un artefacto de arquitectura del produc
 | ID | Decisión | Por qué | Alternativas descartadas |
 |---|---|---|---|
 | ADR-01 | Riverpod para estado + DI | Encaja con *streams* de cámara/poses; permite override en tests; evita dualidad Bloc+get_it | Bloc, Provider puro, setState |
-| ADR-02 | Clean Architecture *feature-first* | Trabajo paralelo del equipo; defensa académica; dominio testeable | Capas globales, pantallas monolíticas del laboratorio previo |
+| ADR-02 | Clean Architecture *feature-first* | Trabajo paralelo del equipo; defensa académica; dominio testeable. Las capas no bastan para la variación por categoría: se complementan con microkernel (ADR-13) | Capas globales, pantallas monolíticas del laboratorio previo |
 | ADR-03 | Datos locales tras Repository | Reduce riesgo este semestre; frontera lista para remoto | Backend desde el día uno |
 | ADR-04 | Strategy por categoría de joya | Tres técnicas de anclaje heterogéneas | `switch` único en un servicio AR |
 | ADR-05 | Adapter de detectores por plataforma | `hand_landmarker` es Android-only | Acoplar UI al plugin |
@@ -359,6 +416,7 @@ Esta matriz **no existe en Flutter**; es un artefacto de arquitectura del produc
 | ADR-10 | Formato GLB (glTF 2.0, PBR) | Un formato para visor, assets y futuros nodos AR | Solo USDZ (iOS); OBJ sin PBR nativo |
 | ADR-11 | Fallback a modelo *placeholder* | No acoplar D2 (modelado 3D) al cierre del pipeline | Bloquear prueba virtual hasta tener GLB reales |
 | ADR-12 | Throttling ≤10 FPS de detección | Alinear tasa de ML con capacidad del isolate | Procesar todos los frames de cámara |
+| ADR-13 | Estilo microkernel sobre el pipeline de prueba virtual (núcleo + plugins `TrackingStrategy` / `LandmarkDetector`) | La sesión (cámara, isolate, filtro, overlay) es invariante; lo que varía es el anclaje y el detector. Nueva categoría = plugin registrado, no reescritura del núcleo. Ver §2.2.1 | Servicio AR monolítico; tres pipelines paralelos; carga dinámica de plugins en runtime |
 
 ## 2.9. Espacio de coordenadas (dominio de joyería)
 
@@ -425,7 +483,7 @@ flowchart LR
     DOM -. no conoce .-> P
 ```
 
-**Frase de cierre para el SDD:** *Flutter aporta el runtime de UI, el acceso a cámara/permisos mediante plugins y los mecanismos de concurrencia y canales nativos; la arquitectura de la aplicación aporta el modelo de dominio de joyería, las estrategias de anclaje por categoría, el pipeline de tracking estabilizado, las fronteras de repositorio y la orquestación de la sesión de prueba virtual.*
+**Frase de cierre para el SDD:** *Flutter aporta el runtime de UI, el acceso a cámara/permisos mediante plugins y los mecanismos de concurrencia y canales nativos; la arquitectura de la aplicación aporta el modelo de dominio de joyería, un núcleo de sesión de prueba virtual y plugins de anclaje/detección por categoría (estilo microkernel), las fronteras de repositorio y la orquestación de la sesión.*
 
 ---
 
@@ -441,8 +499,8 @@ flowchart LR
 | Media | Extraer `ComposeTryOnSession` | Propuesta |
 | Media | `JewelryRenderStrategy` (overlay 2D vs nodo AR futuro) | Propuesta |
 | Baja | `Specification` de pieza renderizable | Propuesta |
-| Hecho (doc) | Tres ejes de dominio, ADR 01–12, escenarios EC-01…06, rename Fallback | Cubierto en este SDD |
-| Hecho (doc) | `ARQUITECTURA.md` *as-built* sin contradecir overlay / ADR | Alineado 2026-08-23 |
+| Hecho (doc) | Tres ejes de dominio, ADR 01–13 (microkernel §2.2.1), escenarios EC-01…06, rename Fallback | Cubierto en este SDD |
+| Hecho (doc) | `ARQUITECTURA.md` *as-built* sin contradecir overlay / ADR | Alineado 2026-08-25 |
 
 ---
 
@@ -462,7 +520,7 @@ flowchart LR
 - [x] Un lector externo distingue *framework* vs *diseño propio* (Partes A/B + tabla §1.3).
 - [x] Diagramas separados: Flutter (§1.5) y aplicación (§2.4).
 - [x] Matriz categoría × detector × plataforma (§2.7).
-- [x] Patrones y ADR con justificación y alternativa descartada (§§2.5, 2.8).
+- [x] Estilo microkernel justificado (núcleo vs plugins, alternativas, alcance académico) (§2.2.1, ADR-13).
 - [x] Ocho puntos del enunciado del SDD cubiertos (índice).
 - [x] Escenarios de calidad con medida (§2.6.1).
 - [x] Política de degradación explícita (§2.6.2).

@@ -1,8 +1,8 @@
 # Arquitectura de la aplicación — Visualización virtual de joyería con Realidad Aumentada
 
-**Estado:** Documento técnico interno *as-built* (refleja el código en el repositorio) · **Última actualización:** 2026-08-23  
+**Estado:** Documento técnico interno *as-built* (refleja el código en el repositorio) · **Última actualización:** 2026-08-25  
 **Base tecnológica:** Flutter · Dart 3.11 · Material 3  
-**Decisiones marco:** Riverpod (estado + DI) · Clean Architecture *feature-first* · datos locales · Strategy de anclaje por categoría
+**Decisiones marco:** Riverpod (estado + DI) · Clean Architecture *feature-first* + microkernel en el pipeline de prueba virtual · datos locales · Strategy de anclaje por categoría
 
 > Documento técnico interno. Describe la arquitectura **implementada** del producto (aretes, pulseras y collares). Plataformas: Android 9.0 (API 28)+ e iOS 16.0+.
 >
@@ -39,7 +39,7 @@ Escenarios medibles (estímulo → respuesta → medida): ver SDD §2.6.1.
 
 ## 3. Estilo arquitectónico
 
-**Clean Architecture** con tres capas y organización **feature-first**. Las dependencias apuntan **hacia el dominio**.
+**Clean Architecture** con tres capas y organización **feature-first**. Las dependencias apuntan **hacia el dominio**. Sobre el pipeline de prueba virtual se aplica además un **estilo microkernel**: el núcleo (sesión, cámara, isolate, filtro) es invariante; las estrategias de anclaje y los detectores son *plugins* de contrato fijo. Justificación y alternativas descartadas: SDD §2.2.1 y ADR-13.
 
 ```mermaid
 flowchart TB
@@ -73,7 +73,8 @@ flowchart TB
 - **Dominio:** entidades, contratos, casos de uso de catálogo, estrategias. Sin Flutter ni plugins.
 - **Datos:** repositorios, detectores, parsing JSON.
 - **Presentación:** pantallas y controllers. No calcula anclajes.
-- **`core`:** cámara, permisos, isolate, filtros One Euro, geometría (`Vec3`), channels, DI.
+- **`core`:** cámara, permisos, isolate, filtros One Euro, geometría (`Vec3`), channels, DI — servicios del **núcleo** (compartidos por todas las categorías).
+- **Plugins del pipeline:** `TrackingStrategy` por categoría y `LandmarkDetector` por plataforma; se registran en DI, no se cargan en runtime.
 
 ---
 
@@ -316,7 +317,7 @@ Code-gen (`freezed`, `riverpod_generator`) **no** adoptado aún (clases Dart pla
 
 ## 12. Decisiones de arquitectura (ADR)
 
-**Fuente única:** [`SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md`](SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md) §2.8 (ADR-01 … ADR-12).  
+**Fuente única:** [`SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md`](SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md) §2.8 (ADR-01 … ADR-13).  
 No se replica la tabla aquí para evitar divergencia entre documentos.
 
 ---
