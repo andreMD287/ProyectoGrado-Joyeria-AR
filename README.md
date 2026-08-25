@@ -22,7 +22,7 @@ Validado en dispositivo físico Android (sin ARCore): la prueba virtual detecta 
 
 ## Arquitectura
 
-Clean Architecture *feature-first* + Riverpod (estado e inyección de dependencias). El diseño completo, con diagramas y decisiones, está en **[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md)**.
+Clean Architecture *feature-first* + estilo microkernel en el pipeline de prueba virtual + Riverpod (estado e inyección de dependencias). El diseño completo, con diagramas y decisiones, está en **[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md)**; la justificación académica (Flutter vs. aplicación, microkernel, ADR) en **[`docs/SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md`](docs/SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md)**.
 
 ```
 lib/
