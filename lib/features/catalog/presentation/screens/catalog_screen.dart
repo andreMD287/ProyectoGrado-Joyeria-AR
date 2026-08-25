@@ -107,7 +107,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                           child: _FeaturedPieceCard(
                             piece: filteredPieces.first,
                             onTap: () => context.push(
-                              '/try-on/${filteredPieces.first.id}',
+                              '/piece/${filteredPieces.first.id}',
                             ),
                           ),
                         ),
@@ -124,7 +124,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                                 return PieceCard(
                                   piece: piece,
                                   onTap: () => context.push(
-                                    '/try-on/${piece.id}',
+                                    '/piece/${piece.id}',
                                   ),
                                 );
                               },
@@ -604,8 +604,6 @@ class _LuxuryBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const espresso = Color(0xFF3A2419);
-    const gold = Color(0xFFB4895B);
-
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFFFFCF8),
