@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import '../features/ar_experience/presentation/screens/try_on_prepare_screen.dart';
 import '../features/ar_experience/presentation/screens/try_on_screen.dart';
 import '../features/catalog/presentation/screens/catalog_screen.dart';
 import '../features/jewelry_detail/presentation/screens/jewelry_3d_screen.dart';
@@ -30,6 +31,13 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/piece/:pieceId/3d',
       builder: (context, state) => Jewelry3dScreen(
+        pieceId: state.pathParameters['pieceId']!,
+      ),
+    ),
+
+    GoRoute(
+      path: '/try-on/:pieceId/prepare',
+      builder: (context, state) => TryOnPrepareScreen(
         pieceId: state.pathParameters['pieceId']!,
       ),
     ),

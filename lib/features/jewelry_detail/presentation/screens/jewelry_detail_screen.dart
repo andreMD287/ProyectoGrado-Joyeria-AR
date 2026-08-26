@@ -25,10 +25,8 @@ class _JewelryDetailScreenState
   int _viewerVersion = 0;
 
   static const _background = Color(0xFFFBF7F2);
-  static const _surface = Color(0xFFFFFCF8);
   static const _espresso = Color(0xFF3A2419);
   static const _gold = Color(0xFFB4895B);
-  static const _champagne = Color(0xFFE7D7C3);
 
   JewelryPiece? _findPiece(List<JewelryPiece> pieces) {
     for (final piece in pieces) {
@@ -83,21 +81,18 @@ class _JewelryDetailScreenState
           SliverToBoxAdapter(
             child: _buildHeader(piece),
           ),
-
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
               child: _buildViewer(piece),
             ),
           ),
-
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(26, 28, 26, 0),
               child: _buildInformation(piece),
             ),
           ),
-
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(26, 26, 26, 40),
@@ -126,7 +121,6 @@ class _JewelryDetailScreenState
               ),
             ),
           ),
-
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 70),
             child: Text(
@@ -176,7 +170,6 @@ class _JewelryDetailScreenState
               ),
             ),
           ),
-
           Positioned.fill(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -189,25 +182,19 @@ class _JewelryDetailScreenState
                 key: ValueKey(_viewerVersion),
 
                 // TEMPORAL:
-                // cuando agreguemos los GLB reales,
+                // Cuando agreguemos los GLB reales,
                 // cambiaremos esto por piece.modeloGlb.
                 src: 'assets/models/_placeholder.glb',
 
                 alt: piece.nombre,
-
                 ar: false,
-
                 autoRotate: false,
-
                 cameraControls: true,
-
                 disableZoom: false,
-
                 backgroundColor: Colors.transparent,
               ),
             ),
           ),
-
           Positioned(
             left: 18,
             top: 18,
@@ -230,7 +217,6 @@ class _JewelryDetailScreenState
               ),
             ),
           ),
-
           Positioned(
             right: 16,
             top: 16,
@@ -244,9 +230,7 @@ class _JewelryDetailScreenState
                     });
                   },
                 ),
-
                 const SizedBox(height: 10),
-
                 _ViewerButton(
                   icon: Icons.open_in_full_rounded,
                   onTap: () {
@@ -258,7 +242,6 @@ class _JewelryDetailScreenState
               ],
             ),
           ),
-
           Positioned(
             left: 0,
             right: 0,
@@ -279,15 +262,12 @@ class _JewelryDetailScreenState
                     fontSize: 12,
                   ),
                 ),
-
                 Container(
                   width: 1,
                   height: 20,
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 13),
+                  margin: const EdgeInsets.symmetric(horizontal: 13),
                   color: const Color(0xFFD4C1AD),
                 ),
-
                 const Icon(
                   Icons.pinch_outlined,
                   color: Color(0xFF8D7766),
@@ -322,9 +302,7 @@ class _JewelryDetailScreenState
             height: 1.05,
           ),
         ),
-
         const SizedBox(height: 13),
-
         Text(
           _categoryLabel(piece.categoria).toUpperCase(),
           style: const TextStyle(
@@ -334,9 +312,7 @@ class _JewelryDetailScreenState
             letterSpacing: 2.3,
           ),
         ),
-
         const SizedBox(height: 22),
-
         Text(
           piece.descripcion ??
               'Una pieza diseñada para complementar tu estilo.',
@@ -346,9 +322,7 @@ class _JewelryDetailScreenState
             height: 1.55,
           ),
         ),
-
         const SizedBox(height: 26),
-
         Row(
           children: [
             Expanded(
@@ -358,9 +332,7 @@ class _JewelryDetailScreenState
                 value: piece.material ?? 'No disponible',
               ),
             ),
-
             const SizedBox(width: 10),
-
             Expanded(
               child: _InfoCard(
                 icon: Icons.straighten_rounded,
@@ -368,9 +340,7 @@ class _JewelryDetailScreenState
                 value: _dimensionLabel(piece),
               ),
             ),
-
             const SizedBox(width: 10),
-
             Expanded(
               child: _InfoCard(
                 icon: _categoryIcon(piece.categoria),
@@ -392,7 +362,11 @@ class _JewelryDetailScreenState
           height: 64,
           child: FilledButton(
             onPressed: () {
-              context.push('/try-on/${piece.id}');
+              // NUEVO FLUJO:
+              // Detalle → Preparación → Cámara AR
+              context.push(
+                '/try-on/${piece.id}/prepare',
+              );
             },
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF171512),
@@ -421,9 +395,7 @@ class _JewelryDetailScreenState
             ),
           ),
         ),
-
         const SizedBox(height: 14),
-
         SizedBox(
           width: double.infinity,
           height: 64,
@@ -586,9 +558,7 @@ class _InfoCard extends StatelessWidget {
               ),
             ],
           ),
-
           const Spacer(),
-
           Text(
             value,
             maxLines: 2,
@@ -604,3 +574,4 @@ class _InfoCard extends StatelessWidget {
     );
   }
 }
+
