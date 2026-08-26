@@ -218,44 +218,61 @@ class _PrepareContent extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      height: 76,
-      decoration: const BoxDecoration(
-        color: _surface,
-        border: Border(
-          bottom: BorderSide(
-            color: _champagne,
-            width: 0.8,
-          ),
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
+Widget _buildHeader(BuildContext context) {
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+    child: SizedBox(
+      height: 58,
+      child: Row(
         children: [
-          Positioned(
-            left: 10,
-            child: IconButton(
-              onPressed: () => context.pop(),
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: _gold,
-                size: 29,
+          SizedBox(
+            width: 46,
+            height: 46,
+            child: Material(
+              color: const Color(0xFFF4ECE2),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => context.pop(),
+                child: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: _espresso,
+                  size: 21,
+                ),
               ),
             ),
           ),
-          const Text(
-            'Prueba virtual',
-            style: TextStyle(
-              color: _espresso,
-              fontFamily: 'Georgia',
-              fontSize: 25,
+
+          const SizedBox(width: 12),
+
+          const Expanded(
+            child: Text(
+              'Prueba virtual',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _espresso,
+                fontFamily: 'Georgia',
+                fontSize: 24,
+                fontWeight: FontWeight.w400,
+              ),
             ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Espacio invisible para que el título quede
+          // perfectamente centrado respecto a la flecha.
+          const SizedBox(
+            width: 46,
+            height: 46,
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   List<_InstructionData> _instructionsFor(
     JewelryCategory category,
