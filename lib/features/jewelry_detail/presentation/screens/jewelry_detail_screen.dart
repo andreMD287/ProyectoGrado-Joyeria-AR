@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
+import '../../../../core/assets/resolved_model_asset.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
@@ -178,21 +179,38 @@ class _JewelryDetailScreenState
                 6,
                 45,
               ),
-              child: ModelViewer(
-                key: ValueKey(_viewerVersion),
-
-                // TEMPORAL:
-                // Cuando agreguemos los GLB reales,
-                // cambiaremos esto por piece.modeloGlb.
-                src: 'assets/models/_placeholder.glb',
-
-                alt: piece.nombre,
-                ar: false,
-                autoRotate: false,
-                cameraControls: true,
-                disableZoom: false,
-                backgroundColor: Colors.transparent,
-              ),
+              child: ref
+                  .watch(
+                    resolvedModelAssetProvider(
+                      piece.modeloGlb,
+                    ),
+                  )
+                  .when(
+                    loading: () => const Center(
+                      child: CircularProgressIndicator(
+                        color: _gold,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                    error: (_, _) => const Center(
+                      child: CircularProgressIndicator(
+                        color: _gold,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                    data: (src) => ModelViewer(
+                      key: ValueKey(
+                        '$_viewerVersion-$src',
+                      ),
+                      src: src,
+                      alt: piece.nombre,
+                      ar: false,
+                      autoRotate: false,
+                      cameraControls: true,
+                      disableZoom: false,
+                      backgroundColor: Colors.transparent,
+                    ),
+                  ),
             ),
           ),
           Positioned(
