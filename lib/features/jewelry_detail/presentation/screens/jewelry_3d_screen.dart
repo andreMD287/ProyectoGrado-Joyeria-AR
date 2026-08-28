@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
+import '../../../../core/assets/resolved_model_asset.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
 
@@ -66,24 +67,37 @@ class _Jewelry3dScreenState
           return Stack(
             children: [
               Positioned.fill(
-                child: ModelViewer(
-                  key: ValueKey(_viewerVersion),
-
-                  // TEMPORAL hasta agregar los GLB definitivos.
-                  src: 'assets/models/_placeholder.glb',
-
-                  alt: piece.nombre,
-
-                  ar: false,
-
-                  autoRotate: false,
-
-                  cameraControls: true,
-
-                  disableZoom: false,
-
-                  backgroundColor: const Color(0xFF0E0C09),
-                ),
+                child: ref
+                    .watch(
+                      resolvedModelAssetProvider(
+                        piece.modeloGlb,
+                      ),
+                    )
+                    .when(
+                      loading: () => const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFD2AE6C),
+                        ),
+                      ),
+                      error: (_, _) => const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFD2AE6C),
+                        ),
+                      ),
+                      data: (src) => ModelViewer(
+                        key: ValueKey(
+                          '$_viewerVersion-$src',
+                        ),
+                        src: src,
+                        alt: piece.nombre,
+                        ar: false,
+                        autoRotate: false,
+                        cameraControls: true,
+                        disableZoom: false,
+                        backgroundColor:
+                            const Color(0xFF0E0C09),
+                      ),
+                    ),
               ),
 
               SafeArea(
@@ -168,7 +182,7 @@ class _Jewelry3dScreenState
                         child: FilledButton(
                           onPressed: () {
                             context.push(
-                              '/try-on/${piece.id}',
+                              '/try-on/${piece.id}/prepare',
                             );
                           },
                           style: FilledButton.styleFrom(

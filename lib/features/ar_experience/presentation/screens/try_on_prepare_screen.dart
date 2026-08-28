@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/di/providers.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
-import '../../../../core/permissions/permission_service.dart';
 
 class TryOnPrepareScreen extends ConsumerWidget {
   final String pieceId;
@@ -75,7 +75,7 @@ class TryOnPrepareScreen extends ConsumerWidget {
   }
 }
 
-class _PrepareContent extends StatelessWidget {
+class _PrepareContent extends ConsumerWidget {
   final JewelryPiece piece;
 
   const _PrepareContent({
@@ -89,7 +89,7 @@ class _PrepareContent extends StatelessWidget {
   static const _muted = Color(0xFF8B7768);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final instructions = _instructionsFor(piece.categoria);
 
     return SafeArea(
@@ -158,27 +158,25 @@ class _PrepareContent extends StatelessWidget {
                     width: double.infinity,
                     height: 64,
                     child: FilledButton(
-                     onPressed: () async {
-  const permissionService = PermissionService();
+                      onPressed: () async {
+                        final granted = await ref
+                            .read(permissionServiceProvider)
+                            .ensureCamera();
 
-  final granted = await permissionService.ensureCamera();
+                        if (!context.mounted) return;
 
-  if (!context.mounted) return;
-
-  if (granted) {
-    context.push(
-      '/try-on/${piece.id}',
-    );
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Necesitamos acceso a la cámara para realizar la prueba virtual.',
-        ),
-      ),
-    );
-  }
-},
+                        if (granted) {
+                          context.push('/try-on/${piece.id}');
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Necesitamos acceso a la cámara para realizar la prueba virtual.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF171512),
                         foregroundColor: Colors.white,

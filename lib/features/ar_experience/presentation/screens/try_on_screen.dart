@@ -2,29 +2,17 @@ import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
+import '../../../../core/assets/resolved_model_asset.dart';
 import '../../../../core/di/providers.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 import '../controllers/try_on_controller.dart';
-
-const _placeholderModelAsset = 'assets/models/_placeholder.glb';
-
-final _resolvedModelAssetProvider =
-    FutureProvider.family<String, String>((ref, assetPath) async {
-  try {
-    await rootBundle.load(assetPath);
-    return assetPath;
-  } catch (_) {
-    return _placeholderModelAsset;
-  }
-});
 
 class TryOnScreen extends ConsumerWidget {
   final String pieceId;
@@ -791,7 +779,7 @@ class _ModelOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final modelAsset = ref.watch(
-      _resolvedModelAssetProvider(
+      resolvedModelAssetProvider(
         piece.modeloGlb,
       ),
     );
@@ -832,7 +820,7 @@ class _ModelOverlay extends ConsumerWidget {
           child: modelAsset.when(
             loading: () =>
                 const SizedBox.shrink(),
-            error: (_, __) =>
+            error: (_, _) =>
                 const SizedBox.shrink(),
             data: (src) => IgnorePointer(
               child: ModelViewer(
