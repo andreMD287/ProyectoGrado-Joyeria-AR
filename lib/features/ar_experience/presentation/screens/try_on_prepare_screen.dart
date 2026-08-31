@@ -82,10 +82,7 @@ class _PrepareContent extends ConsumerWidget {
     required this.piece,
   });
 
-  static const _surface = Color(0xFFFFFCF8);
   static const _espresso = Color(0xFF3A2419);
-  static const _gold = Color(0xFFB4895B);
-  static const _champagne = Color(0xFFE7D7C3);
   static const _muted = Color(0xFF8B7768);
 
   @override
