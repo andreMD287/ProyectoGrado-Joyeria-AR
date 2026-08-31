@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# El job solo lee el repositorio; no publica nada ni escribe en la API.
+permissions:
+  contents: read
+
 # Si se empuja dos veces seguidas a la misma rama, cancela la corrida anterior.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
