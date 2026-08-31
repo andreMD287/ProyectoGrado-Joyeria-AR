@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Si se empuja dos veces seguidas a la misma rama, cancela la corrida anterior.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Análisis estático y pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # El módulo Android compila con Java 17 (android/app/build.gradle.kts).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Versión fijada a la que usa el equipo; subirla debe ser una decisión
+      # explícita, no un efecto colateral del canal stable.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.7
+          channel: stable
+          cache: true
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      # analysis_options.yaml ya excluye mvp-reference/ y spikes/.
+      - name: Análisis estático
+        run: flutter analyze
+
+      - name: Pruebas unitarias y de widget
+        run: flutter test
