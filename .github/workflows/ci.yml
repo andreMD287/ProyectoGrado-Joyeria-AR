@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # `andre` se verifica en cada push porque se integra por merge directo, sin
+    # pull request: sin esto pasaria por CI recien despues de estar en main.
+    branches: [main, andre]
   pull_request:
     branches: [main]
 
