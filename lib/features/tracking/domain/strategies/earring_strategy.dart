@@ -47,7 +47,10 @@ class EarringStrategy implements TrackingStrategy {
   bool _present(Landmark lm) => (lm.visibility ?? 0) > 0;
 
   @override
-  AnchorPose? computeAnchor(List<Landmark> landmarks) {
+  AnchorPose? computeAnchor(
+    List<Landmark> landmarks, {
+    double imageAspect = 1.0, // esta estrategia aun no estima escala ni roll
+  }) {
     if (landmarks.length <= rightEye) return null;
     final le = landmarks[leftEye];
     final re = landmarks[rightEye];

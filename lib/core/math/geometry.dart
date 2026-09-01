@@ -61,3 +61,71 @@ NormalizedPoint normalizeMlKitLandmarkToPreview({
       ),
   };
 }
+
+/// Cómo queda un frame de cámara dentro del área donde se dibuja, cuando se
+/// muestra con `BoxFit.cover`: la escala aplicada y el desplazamiento del
+/// origen (negativo en el eje que se recorta).
+///
+/// Hace falta porque el overlay AR y la vista previa tienen que compartir el
+/// mismo sistema de coordenadas. `BoxFit.cover` **escala y recorta**, así que
+/// multiplicar un landmark normalizado por el tamaño del área da un punto
+/// desplazado: coincide en el centro y se desvía hacia los bordes del eje
+/// recortado.
+class PreviewFit {
+  /// Píxeles de pantalla por píxel de imagen.
+  final double scale;
+
+  /// Origen de la imagen renderizada, relativo al área de dibujo.
+  final double dx, dy;
+
+  final double imageWidth, imageHeight;
+
+  const PreviewFit({
+    required this.scale,
+    required this.dx,
+    required this.dy,
+    required this.imageWidth,
+    required this.imageHeight,
+  });
+
+  /// Coordenada horizontal en el área, para un x normalizado del frame.
+  double xOf(double normalizedX) => dx + normalizedX * imageWidth * scale;
+
+  /// Coordenada vertical en el área, para un y normalizado del frame.
+  double yOf(double normalizedY) => dy + normalizedY * imageHeight * scale;
+
+  /// Longitud en píxeles de pantalla de una medida expresada en fracciones del
+  /// ancho del frame (la unidad que usa `AnchorPose.scale`).
+  double lengthOf(double widthFraction) => widthFraction * imageWidth * scale;
+}
+
+/// Calcula la [PreviewFit] de un frame dibujado con `BoxFit.cover`.
+///
+/// [imageWidth] y [imageHeight] son los del frame **ya rotado a vertical**,
+/// que es como se dibuja el preview y como vienen normalizados los landmarks.
+PreviewFit coverFit({
+  required double imageWidth,
+  required double imageHeight,
+  required double areaWidth,
+  required double areaHeight,
+}) {
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    return PreviewFit(
+      scale: 1,
+      dx: 0,
+      dy: 0,
+      imageWidth: areaWidth,
+      imageHeight: areaHeight,
+    );
+  }
+  final scale = (areaWidth / imageWidth) > (areaHeight / imageHeight)
+      ? areaWidth / imageWidth
+      : areaHeight / imageHeight;
+  return PreviewFit(
+    scale: scale,
+    dx: (areaWidth - imageWidth * scale) / 2,
+    dy: (areaHeight - imageHeight * scale) / 2,
+    imageWidth: imageWidth,
+    imageHeight: imageHeight,
+  );
+}

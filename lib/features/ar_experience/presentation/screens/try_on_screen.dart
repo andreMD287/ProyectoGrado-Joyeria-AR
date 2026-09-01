@@ -11,7 +11,10 @@ import '../../../../core/di/providers.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
+import '../../../../core/math/geometry.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
+import '../../../tracking/domain/entities/landmark.dart';
+import '../../../tracking/domain/strategies/bracelet_strategy.dart';
 import '../controllers/try_on_controller.dart';
 
 class TryOnScreen extends ConsumerWidget {
@@ -83,6 +86,11 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
 
   bool _started = false;
 
+  /// Overlay de diagnostico de landmarks. Se activa desde la propia
+  /// pantalla para poder verificar el tracking en dispositivo sin
+  /// recompilar ni depender del cable.
+  bool _debugOverlay = false;
+
   JewelryPiece get piece => widget.piece;
 
   @override
@@ -123,6 +131,16 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
     final anchor = switch (state) {
       TryOnActive(:final anchor) => anchor,
       _ => null,
+    };
+
+    final landmarks = switch (state) {
+      TryOnActive(:final landmarks) => landmarks,
+      _ => const <Landmark>[],
+    };
+
+    final fps = switch (state) {
+      TryOnActive(:final fps) => fps,
+      _ => 0.0,
     };
 
     return SafeArea(
@@ -171,6 +189,8 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
                   _buildCameraCard(
                     active: active,
                     anchor: anchor,
+                    landmarks: landmarks,
+                    fps: fps,
                   ),
 
                   const SizedBox(height: 18),
@@ -304,6 +324,8 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
   Widget _buildCameraCard({
     required bool active,
     required AnchorPose? anchor,
+    required List<Landmark> landmarks,
+    required double fps,
   }) {
     return Container(
       width: double.infinity,
@@ -331,8 +353,22 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
                 ? _CameraOverlay(
                     piece: piece,
                     anchor: anchor,
+                    landmarks: landmarks,
+                    fps: fps,
+                    showDebug: _debugOverlay,
                   )
                 : const _CameraLoadingView(),
+          ),
+
+          Positioned(
+            right: 12,
+            top: 12,
+            child: _DebugToggle(
+              enabled: _debugOverlay,
+              onPressed: () => setState(
+                () => _debugOverlay = !_debugOverlay,
+              ),
+            ),
           ),
 
           const Positioned(
@@ -630,13 +666,53 @@ class _CameraLoadingView extends StatelessWidget {
   }
 }
 
+/// Boton discreto para activar el overlay de diagnostico de landmarks.
+class _DebugToggle extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  const _DebugToggle({
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: enabled
+          ? const Color(0xFF35E07A).withValues(alpha: 0.9)
+          : Colors.black.withValues(alpha: 0.35),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(
+            Icons.my_location_rounded,
+            size: 19,
+            color: enabled ? const Color(0xFF11331F) : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CameraOverlay extends ConsumerWidget {
   final JewelryPiece piece;
   final AnchorPose? anchor;
+  final List<Landmark> landmarks;
+  final double fps;
+  final bool showDebug;
 
   const _CameraOverlay({
     required this.piece,
     required this.anchor,
+    required this.landmarks,
+    required this.fps,
+    required this.showDebug,
   });
 
   @override
@@ -659,31 +735,53 @@ class _CameraOverlay extends ConsumerWidget {
 
         return LayoutBuilder(
           builder: (context, constraints) {
+            // El preview llega en horizontal y se dibuja rotado a vertical, el
+            // mismo marco en el que vienen normalizados los landmarks: por eso
+            // se intercambian ancho y alto.
+            final previewSize = camController.value.previewSize;
+            final imageWidth =
+                previewSize?.height ?? constraints.maxWidth;
+            final imageHeight =
+                previewSize?.width ?? constraints.maxHeight;
+
+            // Una sola transformacion compartida por la vista previa y el
+            // overlay, para que joya y camara no se desalineen en los bordes.
+            final fit = coverFit(
+              imageWidth: imageWidth,
+              imageHeight: imageHeight,
+              areaWidth: constraints.maxWidth,
+              areaHeight: constraints.maxHeight,
+            );
+
             return Stack(
               fit: StackFit.expand,
               children: [
                 FittedBox(
                   fit: BoxFit.cover,
                   child: SizedBox(
-                    width:
-                        camController.value.previewSize?.height ??
-                            constraints.maxWidth,
-                    height:
-                        camController.value.previewSize?.width ??
-                            constraints.maxHeight,
+                    width: imageWidth,
+                    height: imageHeight,
                     child: CameraPreview(
                       camController,
                     ),
                   ),
                 ),
 
-                const _CameraGuide(),
+                if (!showDebug) const _CameraGuide(),
 
                 if (anchor != null)
                   _ModelOverlay(
                     piece: piece,
                     anchor: anchor!,
-                    areaSize: constraints.biggest,
+                    fit: fit,
+                  ),
+
+                if (showDebug)
+                  _LandmarkDebugLayer(
+                    landmarks: landmarks,
+                    anchor: anchor,
+                    fit: fit,
+                    fps: fps,
                   ),
               ],
             );
@@ -762,19 +860,45 @@ class _CameraGuidePainter extends CustomPainter {
 class _ModelOverlay extends ConsumerWidget {
   final JewelryPiece piece;
   final AnchorPose anchor;
-  final Size areaSize;
+  final PreviewFit fit;
 
   const _ModelOverlay({
     required this.piece,
     required this.anchor,
-    required this.areaSize,
+    required this.fit,
   });
 
-  double get _size => switch (piece.categoria) {
+  /// Tamano en pantalla cuando la estrategia todavia no estima escala
+  /// (aretes y collares).
+  double get _fallbackSize => switch (piece.categoria) {
         JewelryCategory.earring => 32,
         JewelryCategory.necklace => 64,
         JewelryCategory.bracelet => 72,
       };
+
+  /// Tamano de la pieza como multiplo de la medida anatomica que reporta la
+  /// estrategia. Para pulseras, multiplos del ancho de la palma: una pulsera
+  /// es algo mas estrecha que la palma pero se ve mas ancha por el grosor.
+  /// Constante a calibrar en dispositivo.
+  double get _scaleFactor => switch (piece.categoria) {
+        JewelryCategory.bracelet => 1.15,
+        _ => 1.0,
+      };
+
+  /// Rotacion extra sobre el angulo que reporta la estrategia.
+  ///
+  /// `BraceletStrategy` entrega el angulo del **eje del antebrazo**, y una
+  /// pulsera se lleva perpendicular a el, de ahi el cuarto de vuelta. Si en
+  /// dispositivo la pieza sale girada 90 grados, este es el valor a tocar.
+  double get _rollOffset => switch (piece.categoria) {
+        JewelryCategory.bracelet => math.pi / 2,
+        _ => 0,
+      };
+
+  /// Limites de seguridad: una deteccion mala no puede llenar la pantalla de
+  /// joya ni encogerla hasta hacerla invisible.
+  static const double _minSize = 24;
+  static const double _maxSize = 320;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -784,37 +908,22 @@ class _ModelOverlay extends ConsumerWidget {
       ),
     );
 
-    final size = _size;
+    final scale = anchor.scale;
+    final size = scale == null
+        ? _fallbackSize
+        : (fit.lengthOf(scale) * _scaleFactor).clamp(_minSize, _maxSize);
 
-    final maxLeft =
-        math.max(0.0, areaSize.width - size);
-
-    final maxTop =
-        math.max(0.0, areaSize.height - size);
-
-    final anchorX =
-        anchor.position.x * areaSize.width;
-
-    final anchorY =
-        anchor.position.y * areaSize.height;
-
-    final left =
-        (anchorX - size / 2).clamp(
-      0.0,
-      maxLeft,
-    );
-
-    final top =
-        (anchorY - size / 2).clamp(
-      0.0,
-      maxTop,
-    );
+    // El punto de anclaje se convierte con la misma transformacion `cover` que
+    // usa la vista previa; multiplicar por el tamano del area desplazaba la
+    // joya hacia los bordes del eje recortado.
+    final centerX = fit.xOf(anchor.position.x);
+    final centerY = fit.yOf(anchor.position.y);
 
     return Stack(
       children: [
         Positioned(
-          left: left,
-          top: top,
+          left: centerX - size / 2,
+          top: centerY - size / 2,
           width: size,
           height: size,
           child: modelAsset.when(
@@ -823,18 +932,23 @@ class _ModelOverlay extends ConsumerWidget {
             error: (_, _) =>
                 const SizedBox.shrink(),
             data: (src) => IgnorePointer(
-              child: ModelViewer(
-                key: ValueKey(
-                  'model-${piece.categoria.id}-$size',
+              child: Transform.rotate(
+                angle: anchor.rollRadians + _rollOffset,
+                child: ModelViewer(
+                  // El tamano NO entra en la key: con escala dinamica cambia
+                  // en cada frame y recrearia el WebView del visor entero.
+                  key: ValueKey(
+                    'model-${piece.categoria.id}-${piece.id}',
+                  ),
+                  src: src,
+                  backgroundColor:
+                      Colors.transparent,
+                  cameraControls: false,
+                  disableZoom: true,
+                  disablePan: true,
+                  disableTap: true,
+                  autoRotate: false,
                 ),
-                src: src,
-                backgroundColor:
-                    Colors.transparent,
-                cameraControls: false,
-                disableZoom: true,
-                disablePan: true,
-                disableTap: true,
-                autoRotate: false,
               ),
             ),
           ),
@@ -842,4 +956,192 @@ class _ModelOverlay extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Overlay de diagnostico: dibuja los 21 landmarks de la mano, el esqueleto,
+/// el punto de anclaje calculado y la frecuencia de deteccion.
+///
+/// Existe para verificar en dispositivo el espacio de coordenadas que devuelve
+/// el detector, que es lo unico que no se puede comprobar en el escritorio: si
+/// los puntos salen espejados, con los ejes cambiados o desplazados respecto a
+/// la mano real, se ve de inmediato en vez de deducirlo de donde queda la joya.
+class _LandmarkDebugLayer extends StatelessWidget {
+  final List<Landmark> landmarks;
+  final AnchorPose? anchor;
+  final PreviewFit fit;
+  final double fps;
+
+  const _LandmarkDebugLayer({
+    required this.landmarks,
+    required this.anchor,
+    required this.fit,
+    required this.fps,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            painter: _LandmarkPainter(
+              landmarks: landmarks,
+              anchor: anchor,
+              fit: fit,
+            ),
+          ),
+          Positioned(
+            left: 10,
+            top: 10,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
+                child: Text(
+                  _debugText(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _debugText() {
+    final buffer = StringBuffer()
+      ..writeln('pts ${landmarks.length}   ${fps.toStringAsFixed(1)} Hz')
+      ..writeln(
+        'img ${fit.imageWidth.toStringAsFixed(0)}'
+        'x${fit.imageHeight.toStringAsFixed(0)}'
+        '   x${fit.scale.toStringAsFixed(2)}',
+      );
+    final a = anchor;
+    if (a == null) {
+      buffer.write('sin ancla');
+    } else {
+      buffer
+        ..writeln(
+          'ancla ${a.position.x.toStringAsFixed(3)}, '
+          '${a.position.y.toStringAsFixed(3)}',
+        )
+        ..write(
+          'roll ${(a.rollRadians * 180 / math.pi).toStringAsFixed(0)}deg   '
+          'esc ${a.scale?.toStringAsFixed(3) ?? "-"}',
+        );
+    }
+    return buffer.toString();
+  }
+}
+
+class _LandmarkPainter extends CustomPainter {
+  final List<Landmark> landmarks;
+  final AnchorPose? anchor;
+  final PreviewFit fit;
+
+  const _LandmarkPainter({
+    required this.landmarks,
+    required this.anchor,
+    required this.fit,
+  });
+
+  /// Conexiones del esqueleto de MediaPipe Hands (palma y cinco dedos).
+  static const List<List<int>> _bones = [
+    [0, 1], [1, 2], [2, 3], [3, 4], // pulgar
+    [0, 5], [5, 6], [6, 7], [7, 8], // indice
+    [5, 9], [9, 10], [10, 11], [11, 12], // medio
+    [9, 13], [13, 14], [14, 15], [15, 16], // anular
+    [13, 17], [17, 18], [18, 19], [19, 20], // menique
+    [0, 17], // borde de la palma
+  ];
+
+  Offset _project(Landmark lm) => Offset(fit.xOf(lm.x), fit.yOf(lm.y));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (landmarks.isNotEmpty) {
+      final bonePaint = Paint()
+        ..color = const Color(0xFF35E07A)
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round;
+
+      for (final bone in _bones) {
+        if (bone[0] >= landmarks.length || bone[1] >= landmarks.length) {
+          continue;
+        }
+        canvas.drawLine(
+          _project(landmarks[bone[0]]),
+          _project(landmarks[bone[1]]),
+          bonePaint,
+        );
+      }
+
+      final pointPaint = Paint()..color = const Color(0xFFFFFFFF);
+      final keyPaint = Paint()..color = const Color(0xFF3FA9FF);
+
+      for (var i = 0; i < landmarks.length; i++) {
+        // Se destacan los tres puntos de los que sale el anclaje.
+        final isKey = i == BraceletStrategy.wristLandmark ||
+            i == BraceletStrategy.indexMcpLandmark ||
+            i == BraceletStrategy.pinkyMcpLandmark;
+        canvas.drawCircle(
+          _project(landmarks[i]),
+          isKey ? 5 : 3,
+          isKey ? keyPaint : pointPaint,
+        );
+      }
+    }
+
+    final a = anchor;
+    if (a == null) return;
+
+    final center = Offset(fit.xOf(a.position.x), fit.yOf(a.position.y));
+    final crossPaint = Paint()
+      ..color = const Color(0xFFFF4D4D)
+      ..strokeWidth = 2;
+    const arm = 12.0;
+    canvas.drawLine(
+      center - const Offset(arm, 0),
+      center + const Offset(arm, 0),
+      crossPaint,
+    );
+    canvas.drawLine(
+      center - const Offset(0, arm),
+      center + const Offset(0, arm),
+      crossPaint,
+    );
+
+    // Segmento en la direccion del eje reportado, para ver si el roll apunta a
+    // donde debe antes de fiarse de como sale girada la joya.
+    final scale = a.scale;
+    if (scale == null) return;
+    final length = fit.lengthOf(scale);
+    canvas.drawLine(
+      center,
+      center +
+          Offset(
+            math.cos(a.rollRadians) * length,
+            math.sin(a.rollRadians) * length,
+          ),
+      Paint()
+        ..color = const Color(0xFFFFD166)
+        ..strokeWidth = 2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LandmarkPainter oldDelegate) =>
+      oldDelegate.landmarks != landmarks || oldDelegate.anchor != anchor;
 }

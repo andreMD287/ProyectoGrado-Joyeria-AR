@@ -36,7 +36,10 @@ class NecklaceStrategy implements TrackingStrategy {
   void reset() {}
 
   @override
-  AnchorPose? computeAnchor(List<Landmark> landmarks) {
+  AnchorPose? computeAnchor(
+    List<Landmark> landmarks, {
+    double imageAspect = 1.0, // esta estrategia aun no estima escala ni roll
+  }) {
     if (landmarks.length <= rightShoulder) return null;
     final l = landmarks[leftShoulder];
     final r = landmarks[rightShoulder];
