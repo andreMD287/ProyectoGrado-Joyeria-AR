@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# El job solo lee el repositorio; no publica nada ni escribe en la API.
+permissions:
+  contents: read
+
+# Si se empuja dos veces seguidas a la misma rama, cancela la corrida anterior.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Análisis, pruebas y APK debug
+    runs-on: ubuntu-latest
+    # El primer build descarga Gradle, SDK y NDK; 20 min se queda corto si no hay caché.
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Java 17 = android/app/build.gradle.kts. cache: gradle evita re-descargar
+      # dependencias nativas en cada corrida (ML Kit, MediaPipe, cámara).
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # Versión fijada a la que usa el equipo; subirla debe ser una decisión
+      # explícita, no un efecto colateral del canal stable.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.7
+          channel: stable
+          cache: true
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      # analysis_options.yaml ya excluye mvp-reference/ y spikes/.
+      - name: Análisis estático
+        run: flutter analyze
+
+      - name: Pruebas unitarias y de widget
+        run: flutter test
+
+      # Única red para roturas nativas de Android (manifest merger, Gradle,
+      # plugins JNI). flutter test no las ve. Si esta corrida sale roja por
+      # licencias/NDK del runner, se quita el paso antes de mergear.
+      - name: Compilar APK debug
+        run: flutter build apk --debug

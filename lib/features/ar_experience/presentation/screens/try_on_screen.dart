@@ -79,9 +79,7 @@ class _TryOnBody extends ConsumerStatefulWidget {
 }
 
 class _TryOnBodyState extends ConsumerState<_TryOnBody> {
-  static const _background = Color(0xFFFBF7F2);
   static const _espresso = Color(0xFF3A2419);
-  static const _gold = Color(0xFFB4895B);
   static const _muted = Color(0xFF8B7768);
 
   bool _started = false;
