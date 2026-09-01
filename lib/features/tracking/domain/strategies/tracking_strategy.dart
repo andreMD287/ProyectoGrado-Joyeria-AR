@@ -14,7 +14,17 @@ abstract interface class TrackingStrategy {
 
   /// Calcula la pose de anclaje a partir de los landmarks; `null` si no hay
   /// datos suficientes.
-  AnchorPose? computeAnchor(List<Landmark> landmarks);
+  ///
+  /// [imageAspect] es el ancho/alto en píxeles del frame **ya rotado a
+  /// vertical**, el mismo marco en el que están normalizados los landmarks.
+  /// Hace falta para medir distancias y ángulos reales: en coordenadas
+  /// normalizadas un desplazamiento de 0.1 en x y uno de 0.1 en y no miden lo
+  /// mismo en pantalla salvo que el frame sea cuadrado. Las estrategias que no
+  /// estiman escala ni orientación pueden ignorarlo.
+  AnchorPose? computeAnchor(
+    List<Landmark> landmarks, {
+    double imageAspect,
+  });
 
   /// Limpia estado de sesión (p. ej. lado bloqueado en aretes).
   void reset();

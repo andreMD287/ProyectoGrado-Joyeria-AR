@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/di/providers.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
+import '../../../tracking/domain/entities/landmark.dart';
+import '../../../tracking/domain/entities/tracking_frame.dart';
 
 /// Estados de la experiencia de prueba virtual. Formaliza lo que en la fase de
 /// validación previa era un enum ad hoc por pantalla.
@@ -29,11 +31,25 @@ class TryOnUnsupported extends TryOnState {
   const TryOnUnsupported(this.reason);
 }
 
-/// Detectando y renderizando; [anchor] es la última pose de anclaje.
+/// Detectando y renderizando.
+///
+/// [anchor] es la última pose de anclaje, o `null` si se perdió el tracking:
+/// la UI debe ocultar la joya en ese caso, no seguir dibujando la última pose.
 class TryOnActive extends TryOnState {
   final AnchorPose? anchor;
+
+  /// Landmarks crudos del último frame, para el overlay de depuración.
+  final List<Landmark> landmarks;
+
+  /// Frecuencia de detección medida, en Hz. Es el número que dice si el
+  /// pipeline va lento; el render corre aparte, a la tasa de la pantalla.
   final double fps;
-  const TryOnActive({this.anchor, this.fps = 0});
+
+  const TryOnActive({
+    this.anchor,
+    this.landmarks = const [],
+    this.fps = 0,
+  });
 }
 
 class TryOnError extends TryOnState {
@@ -43,7 +59,9 @@ class TryOnError extends TryOnState {
 
 /// Orquesta permiso → cámara → tracking → estado observable por la UI.
 class TryOnController extends AutoDisposeNotifier<TryOnState> {
-  StreamSubscription<AnchorPose>? _sub;
+  StreamSubscription<TrackingFrame>? _sub;
+  int _lastFrameMs = 0;
+  double _fps = 0;
 
   @override
   TryOnState build() {
@@ -66,10 +84,35 @@ class TryOnController extends AutoDisposeNotifier<TryOnState> {
     }
     final repo = ref.read(trackingRepositoryProvider);
     state = const TryOnActive();
-    _sub = repo.anchorPoseStream(category).listen(
-      (pose) => state = TryOnActive(anchor: pose),
+    _lastFrameMs = 0;
+    _fps = 0;
+    _sub = repo.trackingStream(category).listen(
+      _onFrame,
       onError: (Object e) => state = TryOnError('$e'),
     );
+  }
+
+  void _onFrame(TrackingFrame frame) {
+    state = TryOnActive(
+      anchor: frame.anchor,
+      landmarks: frame.landmarks,
+      fps: _measureFps(),
+    );
+  }
+
+  /// Media exponencial de la frecuencia de emisión, para que el número del HUD
+  /// no salte con cada frame perdido.
+  double _measureFps() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastFrameMs > 0) {
+      final dt = now - _lastFrameMs;
+      if (dt > 0) {
+        final instant = 1000.0 / dt;
+        _fps = _fps == 0 ? instant : _fps * 0.8 + instant * 0.2;
+      }
+    }
+    _lastFrameMs = now;
+    return _fps;
   }
 
   Future<void> stop() async {
