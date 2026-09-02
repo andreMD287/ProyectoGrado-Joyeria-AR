@@ -129,3 +129,29 @@ PreviewFit coverFit({
     imageHeight: imageHeight,
   );
 }
+
+/// Lleva un landmark normalizado en el frame **del sensor** (sin rotar) al
+/// frame ya rotado a vertical, que es como se dibuja la vista previa.
+///
+/// Hace falta para MediaPipe Hands: al detector se le pasa la rotación del
+/// sensor para que haga la inferencia sobre la imagen derecha, pero las
+/// coordenadas que devuelve siguen estando normalizadas en el buffer original
+/// apaisado. Sin esta conversión la mano sale girada 90° — verificado en
+/// dispositivo: con la mano apuntando hacia arriba, los puntos apuntaban a la
+/// izquierda.
+///
+/// [rotationDegrees] es la rotación horaria que hay que aplicar al buffer para
+/// verlo derecho (la `sensorOrientation` de la cámara).
+NormalizedPoint rotateNormalizedToUpright({
+  required double x,
+  required double y,
+  required int rotationDegrees,
+}) {
+  final rotation = ((rotationDegrees % 360) + 360) % 360;
+  return switch (rotation) {
+    90 => NormalizedPoint(1.0 - y, x),
+    180 => NormalizedPoint(1.0 - x, 1.0 - y),
+    270 => NormalizedPoint(y, 1.0 - x),
+    _ => NormalizedPoint(x, y),
+  };
+}
