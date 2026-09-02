@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:isolate';
 
 import 'package:camera/camera.dart';
@@ -8,26 +7,11 @@ import 'package:camera_platform_interface/camera_platform_interface.dart'
 import 'package:flutter/services.dart'
     show BackgroundIsolateBinaryMessenger, RootIsolateToken;
 
-import '../../features/tracking/data/datasources/android_hand_detector.dart';
-import '../../features/tracking/data/datasources/face_detector_datasource.dart';
-import '../../features/tracking/data/datasources/ios_hand_detector.dart';
 import '../../features/tracking/data/datasources/landmark_detector.dart';
-import '../../features/tracking/data/datasources/pose_detector_datasource.dart';
 import '../../features/tracking/domain/entities/landmark.dart';
 import '../../features/tracking/domain/strategies/tracking_strategy.dart'
     show DetectorKind;
-
-/// Formato de imagen de cámara que necesita cada [DetectorKind]: los
-/// detectores basados en ML Kit (`InputImage.fromBytes`) requieren un solo
-/// plano (`nv21` en Android, `bgra8888` en iOS); `hand_landmarker`
-/// (MediaPipe vía JNI) requiere `yuv420`.
-ImageFormatGroup imageFormatGroupFor(DetectorKind kind) => switch (kind) {
-      DetectorKind.hand =>
-        Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
-      DetectorKind.face ||
-      DetectorKind.pose =>
-        Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
-    };
+import 'detection_runner.dart';
 
 class _StartMessage {
   final SendPort replyTo;
@@ -66,7 +50,7 @@ class _StopAck {
 /// `CameraImage` no es transferible entre isolates directamente: se envían
 /// sus campos primitivos como [CameraImageData] (deep copy vía `SendPort`) y
 /// se reconstruye con `CameraImage.fromPlatformInterface` dentro del isolate.
-class DetectionIsolate {
+class DetectionIsolate implements DetectionRunner {
   Isolate? _isolate;
   SendPort? _sendPort;
   ReceivePort? _receivePort;
@@ -74,6 +58,7 @@ class DetectionIsolate {
   int _seq = 0;
   Completer<void>? _stopAck;
 
+  @override
   Future<void> start(DetectorKind kind) async {
     final token = RootIsolateToken.instance;
     if (token == null) {
@@ -99,6 +84,7 @@ class DetectionIsolate {
   }
 
   /// Envía un frame al isolate y espera los landmarks detectados.
+  @override
   Future<List<Landmark>> detect(CameraImage frame, int sensorOrientation) {
     final sendPort = _sendPort;
     if (sendPort == null) return Future.value(const []);
@@ -115,6 +101,7 @@ class DetectionIsolate {
   /// nativo en `dispose()`, y matar el isolate mientras esa respuesta está
   /// en camino provoca un crash fatal del motor de Flutter (`did_send`
   /// check failed) en vez de una excepción manejable.
+  @override
   Future<void> dispose() async {
     final sendPort = _sendPort;
     if (sendPort != null) {
@@ -156,19 +143,12 @@ class DetectionIsolate {
         sensorSensitivity: image.sensorSensitivity,
       );
 
-  static LandmarkDetector _createDetector(DetectorKind kind) => switch (kind) {
-        DetectorKind.hand =>
-          Platform.isIOS ? IosHandDetector() : AndroidHandDetector(),
-        DetectorKind.face => FaceDetectorDataSource(),
-        DetectorKind.pose => PoseDetectorDataSource(),
-      };
-
   static void _entry(_StartMessage start) async {
     // Necesario para que los detectores basados en platform channels (ML
     // Kit) funcionen fuera del isolate principal.
     BackgroundIsolateBinaryMessenger.ensureInitialized(start.token);
 
-    final detector = _createDetector(start.kind);
+    final detector = createLandmarkDetector(start.kind);
     await detector.initialize();
 
     final port = ReceivePort();
