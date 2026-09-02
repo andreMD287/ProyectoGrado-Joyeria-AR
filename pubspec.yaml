@@ -24,12 +24,12 @@ dependencies:
   model_viewer_plus: ^1.10.0        # Visor GLB con PBR (WebView)
 
   # ── Detección de landmarks ──
-  hand_landmarker: ^2.2.0           # MediaPipe manos (JNI, Android-only) — pulseras
+  hand_landmarker: ^3.0.0           # MediaPipe manos (JNI, Android-only) — pulseras
   google_mlkit_face_detection: ^0.13.2   # rostro — aretes (B3)
   google_mlkit_pose_detection: ^0.14.0   # pose/hombros — collares (B2)
 
   # ── Cámara, permisos, matemática ──
-  camera: ^0.11.1
+  camera: ^0.12.0
   camera_platform_interface: ^2.10.0  # reconstruir CameraImage dentro del isolate de detección (B5)
   permission_handler: ^11.4.0
   vector_math: ^2.1.0
