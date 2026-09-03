@@ -60,7 +60,9 @@ class EarringStrategy implements TrackingStrategy {
     final dy = re.y - le.y;
     final interocular = math.sqrt(dx * dx + dy * dy);
     if (interocular <= 0) return null;
-    final roll = math.atan2(dy, dx);
+    // Eje de los ojos: su inclinación no depende del sentido en que se
+    // recorra, y con la cámara frontal el vector viene invertido.
+    final roll = normalizeAxisAngle(math.atan2(dy, dx));
 
     final side = _resolveSide(landmarks);
     if (side == null) return null;
@@ -77,14 +79,23 @@ class EarringStrategy implements TrackingStrategy {
     _missFrames = 0;
     _lockedSide = side;
 
-    // Empuje ligero hacia afuera + un poco más abajo (centro oreja → lóbulo).
-    final outward = (side == 0 ? -1.0 : 1.0) * 0.08 * interocular;
+    // El empuje hacia afuera corrige que el landmark de oreja de ML Kit cae
+    // en el **centro** de la oreja, no en el lóbulo. El borde del bounding
+    // box, en cambio, ya es el límite exterior de la cara: empujarlo más lo
+    // saca de la cabeza. Visto en dispositivo de frente, el ancla acababa
+    // sobre el fondo, a un par de centímetros de la oreja.
+    final outward =
+        (side == 0 ? -1.0 : 1.0) * _outwardFactor(lobe.source) * interocular;
     final down = 0.04 * interocular;
 
     return AnchorPose(
-      position: Vec3(lobe.x + outward, lobe.y + down, lobe.z),
+      position: Vec3(
+        lobe.point.x + outward,
+        lobe.point.y + down,
+        lobe.point.z,
+      ),
       rollRadians: roll,
-      confidence: lobe.visibility ?? 1,
+      confidence: lobe.point.visibility ?? 1,
     );
   }
 
@@ -111,10 +122,17 @@ class EarringStrategy implements TrackingStrategy {
     return null;
   }
 
-  Landmark? _lobeForSide(List<Landmark> landmarks, int side) {
+  /// Cuánto se separa el punto hacia afuera de la cara, en fracciones de la
+  /// distancia interocular. Constante a calibrar en dispositivo.
+  static double _outwardFactor(_LobeSource source) => switch (source) {
+        _LobeSource.boundingBox => 0.0,
+        _LobeSource.cheek || _LobeSource.ear => 0.08,
+      };
+
+  _Lobe? _lobeForSide(List<Landmark> landmarks, int side) {
     final bboxIdx = side == 0 ? leftBBoxLobe : rightBBoxLobe;
     if (landmarks.length > bboxIdx && _present(landmarks[bboxIdx])) {
-      return landmarks[bboxIdx];
+      return _Lobe(landmarks[bboxIdx], _LobeSource.boundingBox);
     }
     // Refinar con mejilla si el bbox falta: mejilla + empuje afuera.
     final cheekIdx = side == 0 ? leftCheek : rightCheek;
@@ -129,10 +147,25 @@ class EarringStrategy implements TrackingStrategy {
             math.pow(landmarks[rightEye].y - landmarks[leftEye].y, 2),
       );
       final out = (side == 0 ? -1.0 : 1.0) * 0.45 * inter;
-      return Landmark(cheek.x + out, eye.y + 0.35 * inter, 0, visibility: 1);
+      return _Lobe(
+        Landmark(cheek.x + out, eye.y + 0.35 * inter, 0, visibility: 1),
+        _LobeSource.cheek,
+      );
     }
     final earIdx = side == 0 ? leftEar : rightEar;
-    if (_present(landmarks[earIdx])) return landmarks[earIdx];
+    if (_present(landmarks[earIdx])) {
+      return _Lobe(landmarks[earIdx], _LobeSource.ear);
+    }
     return null;
   }
+}
+
+/// De dónde se obtuvo el punto de lóbulo. El ajuste fino depende de la
+/// fuente: cada una cae en un sitio distinto de la oreja.
+enum _LobeSource { boundingBox, cheek, ear }
+
+class _Lobe {
+  final Landmark point;
+  final _LobeSource source;
+  const _Lobe(this.point, this.source);
 }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Vector 3D mínimo y puro (sin dependencias), usado por el dominio y los
 /// filtros de estabilización. Compatible con las coordenadas (x, y, z) que
 /// entregan los detectores de landmarks: x,y normalizados [0,1] y z como
@@ -154,4 +156,22 @@ NormalizedPoint rotateNormalizedToUpright({
     270 => NormalizedPoint(y, 1.0 - x),
     _ => NormalizedPoint(x, y),
   };
+}
+
+/// Normaliza el ángulo de un **eje** al rango (-π/2, π/2].
+///
+/// La línea de los ojos o la de los hombros no tienen dirección: da igual
+/// recorrerlas de izquierda a derecha o al revés, la inclinación es la misma.
+/// Pero `atan2` sobre el vector entre sus extremos sí depende del sentido, y
+/// cambia en π al invertirlo.
+///
+/// Importa porque la cámara frontal entrega la imagen espejada: el ojo que ML
+/// Kit llama derecho aparece a la izquierda, el vector queda invertido y el
+/// ángulo salía ~180° en vez de ~0°. Con la pieza rotada por ese valor, se
+/// dibujaba boca abajo (visto en dispositivo con los aretes).
+double normalizeAxisAngle(double radians) {
+  var angle = radians % math.pi;
+  if (angle > math.pi / 2) angle -= math.pi;
+  if (angle <= -math.pi / 2) angle += math.pi;
+  return angle;
 }
