@@ -79,13 +79,17 @@ class EarringStrategy implements TrackingStrategy {
     _missFrames = 0;
     _lockedSide = side;
 
-    // El empuje hacia afuera corrige que el landmark de oreja de ML Kit cae
-    // en el **centro** de la oreja, no en el lóbulo. El borde del bounding
-    // box, en cambio, ya es el límite exterior de la cara: empujarlo más lo
-    // saca de la cabeza. Visto en dispositivo de frente, el ancla acababa
-    // sobre el fondo, a un par de centímetros de la oreja.
-    final outward =
-        (side == 0 ? -1.0 : 1.0) * _outwardFactor(lobe.source) * interocular;
+    // El sentido del ajuste se decide por dónde cae el punto respecto al
+    // centro de la cara **en la imagen**, no por el índice de lado de ML Kit.
+    //
+    // La cámara frontal entrega la imagen espejada, así que el lóbulo que ML
+    // Kit llama derecho aparece a la izquierda. Usando el índice, el ajuste
+    // salía invertido y alejaba el ancla de la cara en vez de acercarla
+    // (visto en dispositivo: el ancla se iba al fondo, fuera de la cabeza).
+    final faceCenterX = (le.x + re.x) / 2;
+    final outward = _awayFromCenter(lobe.point.x, faceCenterX) *
+        _outwardFactor(lobe.source) *
+        interocular;
     final down = 0.04 * interocular;
 
     return AnchorPose(
@@ -123,11 +127,27 @@ class EarringStrategy implements TrackingStrategy {
   }
 
   /// Cuánto se separa el punto hacia afuera de la cara, en fracciones de la
-  /// distancia interocular. Constante a calibrar en dispositivo.
+  /// distancia interocular. **Negativo = hacia adentro.** Constantes a
+  /// calibrar en dispositivo.
+  ///
+  /// Cada fuente cae en un sitio distinto y necesita el ajuste en un sentido:
+  ///
+  /// - **Bounding box:** ML Kit lo dibuja con margen alrededor de la cara
+  ///   (incluye pelo y algo de aire), así que su borde queda *por fuera* de
+  ///   la oreja y hay que meterlo. Medido de frente en un Galaxy A15: el
+  ///   borde caía a un 20% de la distancia interocular por fuera del lóbulo.
+  /// - **Oreja y mejilla:** el landmark de oreja de ML Kit cae en el centro
+  ///   de la oreja, así que ahí sí hay que separarse hacia el lóbulo.
   static double _outwardFactor(_LobeSource source) => switch (source) {
-        _LobeSource.boundingBox => 0.0,
+        _LobeSource.boundingBox => -0.20,
         _LobeSource.cheek || _LobeSource.ear => 0.08,
       };
+
+  /// +1 si [x] queda del lado exterior respecto a [centerX], -1 si del
+  /// interior. Sustituye al índice de lado de ML Kit, que no sobrevive al
+  /// espejo de la cámara frontal.
+  static double _awayFromCenter(double x, double centerX) =>
+      x >= centerX ? 1.0 : -1.0;
 
   _Lobe? _lobeForSide(List<Landmark> landmarks, int side) {
     final bboxIdx = side == 0 ? leftBBoxLobe : rightBBoxLobe;
@@ -146,7 +166,8 @@ class EarringStrategy implements TrackingStrategy {
         math.pow(landmarks[rightEye].x - landmarks[leftEye].x, 2) +
             math.pow(landmarks[rightEye].y - landmarks[leftEye].y, 2),
       );
-      final out = (side == 0 ? -1.0 : 1.0) * 0.45 * inter;
+      final centerX = (landmarks[leftEye].x + landmarks[rightEye].x) / 2;
+      final out = _awayFromCenter(cheek.x, centerX) * 0.45 * inter;
       return _Lobe(
         Landmark(cheek.x + out, eye.y + 0.35 * inter, 0, visibility: 1),
         _LobeSource.cheek,
