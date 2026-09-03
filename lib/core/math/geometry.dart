@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Vector 3D mínimo y puro (sin dependencias), usado por el dominio y los
 /// filtros de estabilización. Compatible con las coordenadas (x, y, z) que
 /// entregan los detectores de landmarks: x,y normalizados [0,1] y z como
@@ -60,4 +62,116 @@ NormalizedPoint normalizeMlKitLandmarkToPreview({
         pixelY / h,
       ),
   };
+}
+
+/// Cómo queda un frame de cámara dentro del área donde se dibuja, cuando se
+/// muestra con `BoxFit.cover`: la escala aplicada y el desplazamiento del
+/// origen (negativo en el eje que se recorta).
+///
+/// Hace falta porque el overlay AR y la vista previa tienen que compartir el
+/// mismo sistema de coordenadas. `BoxFit.cover` **escala y recorta**, así que
+/// multiplicar un landmark normalizado por el tamaño del área da un punto
+/// desplazado: coincide en el centro y se desvía hacia los bordes del eje
+/// recortado.
+class PreviewFit {
+  /// Píxeles de pantalla por píxel de imagen.
+  final double scale;
+
+  /// Origen de la imagen renderizada, relativo al área de dibujo.
+  final double dx, dy;
+
+  final double imageWidth, imageHeight;
+
+  const PreviewFit({
+    required this.scale,
+    required this.dx,
+    required this.dy,
+    required this.imageWidth,
+    required this.imageHeight,
+  });
+
+  /// Coordenada horizontal en el área, para un x normalizado del frame.
+  double xOf(double normalizedX) => dx + normalizedX * imageWidth * scale;
+
+  /// Coordenada vertical en el área, para un y normalizado del frame.
+  double yOf(double normalizedY) => dy + normalizedY * imageHeight * scale;
+
+  /// Longitud en píxeles de pantalla de una medida expresada en fracciones del
+  /// ancho del frame (la unidad que usa `AnchorPose.scale`).
+  double lengthOf(double widthFraction) => widthFraction * imageWidth * scale;
+}
+
+/// Calcula la [PreviewFit] de un frame dibujado con `BoxFit.cover`.
+///
+/// [imageWidth] y [imageHeight] son los del frame **ya rotado a vertical**,
+/// que es como se dibuja el preview y como vienen normalizados los landmarks.
+PreviewFit coverFit({
+  required double imageWidth,
+  required double imageHeight,
+  required double areaWidth,
+  required double areaHeight,
+}) {
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    return PreviewFit(
+      scale: 1,
+      dx: 0,
+      dy: 0,
+      imageWidth: areaWidth,
+      imageHeight: areaHeight,
+    );
+  }
+  final scale = (areaWidth / imageWidth) > (areaHeight / imageHeight)
+      ? areaWidth / imageWidth
+      : areaHeight / imageHeight;
+  return PreviewFit(
+    scale: scale,
+    dx: (areaWidth - imageWidth * scale) / 2,
+    dy: (areaHeight - imageHeight * scale) / 2,
+    imageWidth: imageWidth,
+    imageHeight: imageHeight,
+  );
+}
+
+/// Lleva un landmark normalizado en el frame **del sensor** (sin rotar) al
+/// frame ya rotado a vertical, que es como se dibuja la vista previa.
+///
+/// Hace falta para MediaPipe Hands: al detector se le pasa la rotación del
+/// sensor para que haga la inferencia sobre la imagen derecha, pero las
+/// coordenadas que devuelve siguen estando normalizadas en el buffer original
+/// apaisado. Sin esta conversión la mano sale girada 90° — verificado en
+/// dispositivo: con la mano apuntando hacia arriba, los puntos apuntaban a la
+/// izquierda.
+///
+/// [rotationDegrees] es la rotación horaria que hay que aplicar al buffer para
+/// verlo derecho (la `sensorOrientation` de la cámara).
+NormalizedPoint rotateNormalizedToUpright({
+  required double x,
+  required double y,
+  required int rotationDegrees,
+}) {
+  final rotation = ((rotationDegrees % 360) + 360) % 360;
+  return switch (rotation) {
+    90 => NormalizedPoint(1.0 - y, x),
+    180 => NormalizedPoint(1.0 - x, 1.0 - y),
+    270 => NormalizedPoint(y, 1.0 - x),
+    _ => NormalizedPoint(x, y),
+  };
+}
+
+/// Normaliza el ángulo de un **eje** al rango (-π/2, π/2].
+///
+/// La línea de los ojos o la de los hombros no tienen dirección: da igual
+/// recorrerlas de izquierda a derecha o al revés, la inclinación es la misma.
+/// Pero `atan2` sobre el vector entre sus extremos sí depende del sentido, y
+/// cambia en π al invertirlo.
+///
+/// Importa porque la cámara frontal entrega la imagen espejada: el ojo que ML
+/// Kit llama derecho aparece a la izquierda, el vector queda invertido y el
+/// ángulo salía ~180° en vez de ~0°. Con la pieza rotada por ese valor, se
+/// dibujaba boca abajo (visto en dispositivo con los aretes).
+double normalizeAxisAngle(double radians) {
+  var angle = radians % math.pi;
+  if (angle > math.pi / 2) angle -= math.pi;
+  if (angle <= -math.pi / 2) angle += math.pi;
+  return angle;
 }
