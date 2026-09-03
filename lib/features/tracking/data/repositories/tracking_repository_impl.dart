@@ -47,15 +47,18 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// Frecuencia de detección de referencia para dimensionar el margen de
   /// pérdida de tracking.
   ///
-  /// Medido en dispositivo (Galaxy A15, compilación de depuración) con el
-  /// plugin 3.x: 8–10 Hz, frente a los 3.5 Hz del plugin 2.x, que comprimía
-  /// cada frame a JPEG y lo volvía a decodificar. Oscila porque en modo
-  /// `LIVE_STREAM` MediaPipe solo re-ejecuta la detección de palma cuando
-  /// pierde el seguimiento; mientras trackea, el frame sale mucho más barato.
+  /// Medido en dispositivo (Galaxy A15) con el plugin 3.x: ~10 Hz, frente a
+  /// los 3.5 Hz del plugin 2.x, que comprimía cada frame a JPEG y lo volvía a
+  /// decodificar.
+  ///
+  /// La medición en compilación AOT (`--profile`) dio lo mismo que en
+  /// depuración, así que el límite **no** está en la ejecución de Dart. Queda
+  /// por confirmar dónde está; la sospecha es el transporte de cada
+  /// `CameraImage` (unos 690 KB en yuv420 a 720x480) desde la plataforma.
   ///
   /// No se usa para afinar los filtros: el corte del One Euro va en Hz, así
   /// que su retardo en segundos no depende de la frecuencia de muestreo.
-  static const double _detectionHz = 9.0;
+  static const double _detectionHz = 10.0;
 
   /// Margen antes de declarar perdido el tracking. Sin él, un solo frame sin
   /// detección (frecuentes con MediaPipe) haría parpadear la joya.
