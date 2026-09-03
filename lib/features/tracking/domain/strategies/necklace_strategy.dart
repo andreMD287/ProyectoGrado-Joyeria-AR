@@ -54,7 +54,9 @@ class NecklaceStrategy implements TrackingStrategy {
     final dy = r.y - l.y;
     final width = math.sqrt(dx * dx + dy * dy);
     final anchorY = midY + neckDropFactor * width;
-    final roll = math.atan2(dy, dx);
+    // Eje de los hombros: su inclinación no depende del sentido en que se
+    // recorra, y con la cámara frontal el vector viene invertido.
+    final roll = normalizeAxisAngle(math.atan2(dy, dx));
 
     return AnchorPose(
       position: Vec3(midX, anchorY, midZ),

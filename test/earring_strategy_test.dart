@@ -32,7 +32,7 @@ void main() {
     strategy = EarringStrategy();
   });
 
-  test('usa lóbulo del bbox y empuja un poco afuera', () {
+  test('usa el lóbulo del bbox sin separarlo de la cara', () {
     final anchor = strategy.computeAnchor(faceLandmarks(
       leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
       rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
@@ -41,9 +41,26 @@ void main() {
     ));
 
     expect(anchor, isNotNull);
-    // |0.78-0.5| > |0.30-0.5| → lado derecho → outward +X
-    expect(anchor!.position.x, greaterThan(0.78));
+    // |0.78-0.5| > |0.30-0.5| → lado derecho.
+    //
+    // El borde del bounding box ya es el límite exterior de la cara, así que
+    // aquí NO se empuja hacia afuera. Antes sí se hacía, y en dispositivo el
+    // ancla acababa fuera de la cabeza, sobre el fondo.
+    expect(anchor!.position.x, closeTo(0.78, 1e-9));
     expect(anchor.position.y, greaterThan(0.58));
+  });
+
+  test('sí separa hacia afuera cuando el punto viene de la oreja de ML Kit', () {
+    // Sin bbox ni mejilla: cae al landmark de oreja, que está en el centro de
+    // la oreja y sí necesita el empuje hacia el lóbulo.
+    final anchor = strategy.computeAnchor(faceLandmarks(
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      rightEar: const Landmark(0.72, 0.55, 0.0, visibility: 1),
+    ));
+
+    expect(anchor, isNotNull);
+    expect(anchor!.position.x, greaterThan(0.72));
   });
 
   test('no salta de lado entre frames (lock)', () {

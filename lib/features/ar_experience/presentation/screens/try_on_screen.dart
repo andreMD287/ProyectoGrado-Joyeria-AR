@@ -1055,6 +1055,11 @@ class _LandmarkPainter extends CustomPainter {
     required this.fit,
   });
 
+  /// Numero de landmarks de MediaPipe Hands. El esqueleto y el resaltado de
+  /// puntos clave solo tienen sentido con una mano: sobre los 8 landmarks
+  /// faciales de ML Kit dibujarian lineas inventadas entre ojos y mejillas.
+  static const int _handLandmarkCount = 21;
+
   /// Conexiones del esqueleto de MediaPipe Hands (palma y cinco dedos).
   static const List<List<int>> _bones = [
     [0, 1], [1, 2], [2, 3], [3, 4], // pulgar
@@ -1070,30 +1075,32 @@ class _LandmarkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (landmarks.isNotEmpty) {
+      final isHand = landmarks.length >= _handLandmarkCount;
+
       final bonePaint = Paint()
         ..color = const Color(0xFF35E07A)
         ..strokeWidth = 2
         ..strokeCap = StrokeCap.round;
 
-      for (final bone in _bones) {
-        if (bone[0] >= landmarks.length || bone[1] >= landmarks.length) {
-          continue;
+      if (isHand) {
+        for (final bone in _bones) {
+          canvas.drawLine(
+            _project(landmarks[bone[0]]),
+            _project(landmarks[bone[1]]),
+            bonePaint,
+          );
         }
-        canvas.drawLine(
-          _project(landmarks[bone[0]]),
-          _project(landmarks[bone[1]]),
-          bonePaint,
-        );
       }
 
       final pointPaint = Paint()..color = const Color(0xFFFFFFFF);
       final keyPaint = Paint()..color = const Color(0xFF3FA9FF);
 
       for (var i = 0; i < landmarks.length; i++) {
-        // Se destacan los tres puntos de los que sale el anclaje.
-        final isKey = i == BraceletStrategy.wristLandmark ||
-            i == BraceletStrategy.indexMcpLandmark ||
-            i == BraceletStrategy.pinkyMcpLandmark;
+        // Se destacan los tres puntos de los que sale el anclaje de pulsera.
+        final isKey = isHand &&
+            (i == BraceletStrategy.wristLandmark ||
+                i == BraceletStrategy.indexMcpLandmark ||
+                i == BraceletStrategy.pinkyMcpLandmark);
         canvas.drawCircle(
           _project(landmarks[i]),
           isKey ? 5 : 3,
