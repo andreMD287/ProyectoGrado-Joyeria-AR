@@ -36,7 +36,10 @@ class NecklaceStrategy implements TrackingStrategy {
   void reset() {}
 
   @override
-  AnchorPose? computeAnchor(List<Landmark> landmarks) {
+  AnchorPose? computeAnchor(
+    List<Landmark> landmarks, {
+    double imageAspect = 1.0, // esta estrategia aun no estima escala ni roll
+  }) {
     if (landmarks.length <= rightShoulder) return null;
     final l = landmarks[leftShoulder];
     final r = landmarks[rightShoulder];
@@ -51,7 +54,9 @@ class NecklaceStrategy implements TrackingStrategy {
     final dy = r.y - l.y;
     final width = math.sqrt(dx * dx + dy * dy);
     final anchorY = midY + neckDropFactor * width;
-    final roll = math.atan2(dy, dx);
+    // Eje de los hombros: su inclinación no depende del sentido en que se
+    // recorra, y con la cámara frontal el vector viene invertido.
+    final roll = normalizeAxisAngle(math.atan2(dy, dx));
 
     return AnchorPose(
       position: Vec3(midX, anchorY, midZ),
