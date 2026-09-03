@@ -118,4 +118,56 @@ void main() {
     final after = strategy.computeAnchor(frame);
     expect(after, isNotNull);
   });
+
+  test('setPreferredSide fuerza el lado aunque el otro sea mas visible', () {
+    final frame = faceLandmarks(
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      // El bbox derecho es mas lateral (mas visible): sin forzar, ganaria.
+      leftBBoxLobe: const Landmark(0.35, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.85, 0.58, 0.0, visibility: 1),
+    );
+
+    strategy.setPreferredSide(0); // izquierdo
+    final anchor = strategy.computeAnchor(frame);
+
+    expect(anchor, isNotNull);
+    // El lobulo izquierdo (bbox en 0.35) queda del lado izquierdo del centro.
+    expect(anchor!.position.x, lessThan(0.5));
+  });
+
+  test('setPreferredSide sobrevive a reset (no es el lock de sesion)', () {
+    final frame = faceLandmarks(
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      leftBBoxLobe: const Landmark(0.35, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.85, 0.58, 0.0, visibility: 1),
+    );
+
+    strategy.setPreferredSide(0);
+    strategy.reset();
+    final anchor = strategy.computeAnchor(frame);
+
+    expect(anchor, isNotNull);
+    expect(anchor!.position.x, lessThan(0.5));
+  });
+
+  test('setPreferredSide(null) vuelve al modo automatico', () {
+    final frame = faceLandmarks(
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      leftBBoxLobe: const Landmark(0.35, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.85, 0.58, 0.0, visibility: 1),
+    );
+
+    strategy.setPreferredSide(0);
+    strategy.computeAnchor(frame);
+    strategy.setPreferredSide(null);
+    strategy.reset();
+    final anchor = strategy.computeAnchor(frame);
+
+    // Sin preferencia, gana el lado mas lateral: el derecho (bbox en 0.85).
+    expect(anchor, isNotNull);
+    expect(anchor!.position.x, greaterThan(0.5));
+  });
 }

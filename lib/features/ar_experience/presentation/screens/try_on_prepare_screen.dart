@@ -145,6 +145,11 @@ class _PrepareContent extends ConsumerWidget {
                     const SizedBox(height: 14),
                   ],
 
+                  if (piece.categoria == JewelryCategory.earring) ...[
+                    const _EarSideSelector(),
+                    const SizedBox(height: 14),
+                  ],
+
                   const SizedBox(height: 4),
 
                   const _PrivacyCard(),
@@ -548,6 +553,124 @@ class _PrivacyCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Deja elegir en qué oreja anclar el arete antes de empezar: la estrategia
+/// por defecto bloquea el lado más visible en el primer frame, pero para
+/// probar/calibrar un lado específico conviene poder forzarlo.
+class _EarSideSelector extends ConsumerWidget {
+  const _EarSideSelector();
+
+  static const _espresso = Color(0xFF3A2419);
+  static const _muted = Color(0xFF8B7768);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(earringPreferredSideProvider);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF8),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE2CDAF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '¿En qué oreja quieres probarlo?',
+            style: TextStyle(
+              color: _espresso,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Automático deja que la app elija la oreja más visible.',
+            style: TextStyle(color: _muted, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _SideOption(
+                label: 'Automático',
+                selected: selected == null,
+                onTap: () =>
+                    ref.read(earringPreferredSideProvider.notifier).state =
+                        null,
+              ),
+              const SizedBox(width: 10),
+              _SideOption(
+                label: 'Izquierda',
+                selected: selected == 0,
+                onTap: () =>
+                    ref.read(earringPreferredSideProvider.notifier).state = 0,
+              ),
+              const SizedBox(width: 10),
+              _SideOption(
+                label: 'Derecha',
+                selected: selected == 1,
+                onTap: () =>
+                    ref.read(earringPreferredSideProvider.notifier).state = 1,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SideOption extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SideOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  static const _espresso = Color(0xFF3A2419);
+  static const _gold = Color(0xFFB4895B);
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Material(
+        color: selected ? const Color(0xFFFFF7E9) : const Color(0xFFF4ECE2),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected ? _gold : Colors.transparent,
+                width: 1.4,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: selected ? _espresso : const Color(0xFF8B7768),
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

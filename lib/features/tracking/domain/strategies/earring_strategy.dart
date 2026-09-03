@@ -30,6 +30,11 @@ class EarringStrategy implements TrackingStrategy {
   int _missFrames = 0;
   static const int _maxMissBeforeUnlock = 8;
 
+  /// Lado elegido por el usuario en la pantalla de preparación (0 = izquierdo,
+  /// 1 = derecho, `null` = automático). A diferencia de [_lockedSide], no lo
+  /// toca [reset]: es una preferencia de sesión, no un resultado del tracking.
+  int? _forcedSide;
+
   EarringStrategy();
 
   @override
@@ -37,6 +42,13 @@ class EarringStrategy implements TrackingStrategy {
 
   @override
   DetectorKind get detectorKind => DetectorKind.face;
+
+  /// Fuerza el lado a anclar (0 = izquierdo, 1 = derecho), o vuelve al modo
+  /// automático con `null`. Mientras hay un lado forzado, [_resolveSide]
+  /// ignora el auto-lock y el punto de anclaje se calcula solo con ese lado.
+  void setPreferredSide(int? side) {
+    _forcedSide = side;
+  }
 
   @override
   void reset() {
@@ -104,6 +116,7 @@ class EarringStrategy implements TrackingStrategy {
   }
 
   int? _resolveSide(List<Landmark> landmarks) {
+    if (_forcedSide != null) return _forcedSide;
     if (_lockedSide != null) return _lockedSide;
 
     // Preferir el lado cuyo lóbulo bbox existe; si ambos, el de mayor |x-0.5|

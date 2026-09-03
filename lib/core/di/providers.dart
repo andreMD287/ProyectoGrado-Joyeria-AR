@@ -50,3 +50,8 @@ final trackingRepositoryProvider = Provider<TrackingRepository>((ref) {
     strategies: ref.watch(trackingStrategiesProvider),
   );
 });
+
+/// Lado de oreja elegido en la pantalla de preparación para aretes
+/// (`0` = izquierdo, `1` = derecho, `null` = automático). Vive aquí para que
+/// la UI y [TryOnController] compartan el mismo valor sin acoplarse entre sí.
+final earringPreferredSideProvider = StateProvider<int?>((ref) => null);

@@ -7,6 +7,7 @@ import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 import '../../../tracking/domain/entities/landmark.dart';
 import '../../../tracking/domain/entities/tracking_frame.dart';
+import '../../../tracking/domain/strategies/earring_strategy.dart';
 
 /// Estados de la experiencia de prueba virtual. Formaliza lo que en la fase de
 /// validación previa era un enum ad hoc por pantalla.
@@ -81,6 +82,12 @@ class TryOnController extends AutoDisposeNotifier<TryOnState> {
     if (!granted) {
       state = const TryOnPermissionDenied();
       return;
+    }
+    if (category == JewelryCategory.earring) {
+      final strategy = ref.read(trackingStrategiesProvider)[category];
+      if (strategy is EarringStrategy) {
+        strategy.setPreferredSide(ref.read(earringPreferredSideProvider));
+      }
     }
     final repo = ref.read(trackingRepositoryProvider);
     state = const TryOnActive();
