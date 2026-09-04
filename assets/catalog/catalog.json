@@ -36,12 +36,12 @@
       "categoria": "collar",
       "tipo_anclaje": "cuello",
       "landmark_anclaje": [11, 12],
-      "modelo_glb": "assets/models/collar-cadena-01.glb",
+      "modelo_glb": "assets/models/Collar1_Juanes.glb",
       "foto": "assets/catalog/fotos/collar-cadena-01.jpg",
       "dimensiones_mm": { "alto": 15, "ancho": 12, "profundidad": 3, "longitud": 420 },
       "material": "oro 18k",
       "descripcion": "Collar de cadena fina con dije central.",
-      "estado": "pendiente",
+      "estado": "modelado",
       "notas_material": ""
     }
   ]
