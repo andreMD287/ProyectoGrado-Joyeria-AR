@@ -42,7 +42,8 @@
       "material": "plata 925 con circón",
       "descripcion": "Arete colgante en forma de gota.",
       "estado": "pendiente",
-      "notas_material": "Circón aproximado con material opaco especular (ver D1)."
+      "notas_material": "Circón aproximado con material opaco especular (ver D1).",
+      "orientacion_yaw_deg": 180
     },
     {
       "id": "collar-cadena-01",

@@ -939,6 +939,9 @@ class _ModelOverlay extends ConsumerWidget {
                     'model-${piece.categoria.id}-${piece.id}',
                   ),
                   src: src,
+                  orientation: piece.orientacionYawDeg == 0
+                      ? null
+                      : '0deg 0deg ${piece.orientacionYawDeg}deg',
                   backgroundColor:
                       Colors.transparent,
                   cameraControls: false,

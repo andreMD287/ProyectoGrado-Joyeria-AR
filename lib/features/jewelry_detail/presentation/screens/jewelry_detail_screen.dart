@@ -204,6 +204,9 @@ class _JewelryDetailScreenState
                       ),
                       src: src,
                       alt: piece.nombre,
+                      orientation: piece.orientacionYawDeg == 0
+                          ? null
+                          : '0deg 0deg ${piece.orientacionYawDeg}deg',
                       ar: false,
                       autoRotate: false,
                       cameraControls: true,
