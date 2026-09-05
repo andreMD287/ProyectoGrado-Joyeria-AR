@@ -89,6 +89,10 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
   /// recompilar ni depender del cable.
   bool _debugOverlay = false;
 
+  /// Lupa: amplia digitalmente la vista (camara + joya) centrada en el
+  /// punto de anclaje, para ver el detalle de la pieza de cerca.
+  bool _magnifierOn = false;
+
   JewelryPiece get piece => widget.piece;
 
   @override
@@ -354,6 +358,7 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
                     landmarks: landmarks,
                     fps: fps,
                     showDebug: _debugOverlay,
+                    magnify: _magnifierOn,
                   )
                 : const _CameraLoadingView(),
           ),
@@ -361,10 +366,23 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
           Positioned(
             right: 12,
             top: 12,
-            child: _DebugToggle(
+            child: _ToggleButton(
               enabled: _debugOverlay,
+              icon: Icons.my_location_rounded,
               onPressed: () => setState(
                 () => _debugOverlay = !_debugOverlay,
+              ),
+            ),
+          ),
+
+          Positioned(
+            right: 12,
+            top: 58,
+            child: _ToggleButton(
+              enabled: _magnifierOn,
+              icon: Icons.search_rounded,
+              onPressed: () => setState(
+                () => _magnifierOn = !_magnifierOn,
               ),
             ),
           ),
@@ -664,13 +682,16 @@ class _CameraLoadingView extends StatelessWidget {
   }
 }
 
-/// Boton discreto para activar el overlay de diagnostico de landmarks.
-class _DebugToggle extends StatelessWidget {
+/// Boton discreto de encendido/apagado sobre la vista de camara (debug,
+/// lupa, etc.), resaltado en verde cuando esta activo.
+class _ToggleButton extends StatelessWidget {
   final bool enabled;
+  final IconData icon;
   final VoidCallback onPressed;
 
-  const _DebugToggle({
+  const _ToggleButton({
     required this.enabled,
+    required this.icon,
     required this.onPressed,
   });
 
@@ -688,7 +709,7 @@ class _DebugToggle extends StatelessWidget {
           width: 38,
           height: 38,
           child: Icon(
-            Icons.my_location_rounded,
+            icon,
             size: 19,
             color: enabled ? const Color(0xFF11331F) : Colors.white,
           ),
@@ -704,6 +725,12 @@ class _CameraOverlay extends ConsumerWidget {
   final List<Landmark> landmarks;
   final double fps;
   final bool showDebug;
+  final bool magnify;
+
+  /// Cuanto amplia la lupa. Zoom digital (recorta y escala lo ya renderizado,
+  /// no gana nitidez real) para no depender del zoom optico de la camara, que
+  /// recorta desde el centro del frame y no desde donde esta la joya.
+  static const double _magnifierZoom = 2.2;
 
   const _CameraOverlay({
     required this.piece,
@@ -711,6 +738,7 @@ class _CameraOverlay extends ConsumerWidget {
     required this.landmarks,
     required this.fps,
     required this.showDebug,
+    required this.magnify,
   });
 
   @override
@@ -751,7 +779,7 @@ class _CameraOverlay extends ConsumerWidget {
               areaHeight: constraints.maxHeight,
             );
 
-            return Stack(
+            final stack = Stack(
               fit: StackFit.expand,
               children: [
                 FittedBox(
@@ -782,6 +810,27 @@ class _CameraOverlay extends ConsumerWidget {
                     fps: fps,
                   ),
               ],
+            );
+
+            if (!magnify || anchor == null) return stack;
+
+            // Ancla el zoom en el punto donde esta la joya (no en el centro
+            // del frame): Alignment usa fracciones -1..1 del propio ancho y
+            // alto del Stack, que aqui coincide con el area disponible.
+            final centerX = fit.xOf(anchor!.position.x);
+            final centerY = fit.yOf(anchor!.position.y);
+            final alignX =
+                (centerX / constraints.maxWidth) * 2 - 1;
+            final alignY =
+                (centerY / constraints.maxHeight) * 2 - 1;
+
+            return Transform.scale(
+              scale: _magnifierZoom,
+              alignment: Alignment(
+                alignX.clamp(-1.0, 1.0),
+                alignY.clamp(-1.0, 1.0),
+              ),
+              child: stack,
             );
           },
         );
