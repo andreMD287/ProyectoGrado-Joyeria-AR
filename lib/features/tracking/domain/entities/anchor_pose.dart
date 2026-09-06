@@ -25,12 +25,23 @@ class AnchorPose {
   /// el overlay cae a su tamaño fijo por categoría.
   final double? scale;
 
+  /// Giro fuera del plano de la imagen (pronación/supinación de la muñeca),
+  /// en radianes. `null` cuando la estrategia no lo estima.
+  ///
+  /// A diferencia de [rollRadians] (que gira la imagen plana en pantalla),
+  /// esto orienta el propio modelo 3D — sirve para que la pieza "se voltee"
+  /// cuando el usuario gira la muñeca, no solo cuando inclina el brazo.
+  /// Signo y magnitud son una aproximación 2D (sin profundidad real): ver
+  /// `BraceletStrategy._estimateYaw`.
+  final double? yawRadians;
+
   final double confidence;
 
   const AnchorPose({
     required this.position,
     this.rollRadians = 0,
     this.scale,
+    this.yawRadians,
     this.confidence = 1,
   });
 }

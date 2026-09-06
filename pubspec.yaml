@@ -22,6 +22,7 @@ dependencies:
   # ── Realidad aumentada y visor 3D (stack validado) ──
   ar_flutter_plugin_2: ^0.0.3       # ARCore (Android) / ARKit (iOS)
   model_viewer_plus: ^1.10.0        # Visor GLB con PBR (WebView)
+  webview_flutter: ^4.14.0          # Puente JS al <model-viewer> para orientacion en vivo
 
   # ── Detección de landmarks ──
   hand_landmarker: ^3.0.0           # MediaPipe manos (JNI, Android-only) — pulseras
