@@ -38,7 +38,7 @@ final catalogRepositoryProvider = Provider<CatalogRepository>(
 final trackingStrategiesProvider =
     Provider<Map<JewelryCategory, TrackingStrategy>>((ref) {
   return {
-    JewelryCategory.bracelet: const BraceletStrategy(),
+    JewelryCategory.bracelet: BraceletStrategy(),
     JewelryCategory.earring: EarringStrategy(),
     JewelryCategory.necklace: const NecklaceStrategy(),
   };
