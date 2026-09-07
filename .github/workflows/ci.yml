@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    # `andre` se verifica en cada push porque se integra por merge directo, sin
-    # pull request: sin esto pasaria por CI recien despues de estar en main.
-    branches: [main, andre]
+    # Todas las ramas, no solo main. En este equipo las ramas se integran por
+    # merge directo y no por pull request, asi que sin esto una rama pasaria
+    # por CI recien despues de estar mergeada: el fallo se descubriria ya
+    # dentro de main, contaminando la rama de todos.
+    branches: ['**']
   pull_request:
     branches: [main]
 
@@ -25,7 +27,53 @@ jobs:
     timeout-minutes: 25
 
     steps:
+      # Sin `lfs: true` a proposito. Descargar los modelos en cada corrida son
+      # unos 134 MB contra la cuota mensual de LFS, que se agotaria en una
+      # semana de trabajo normal. Consecuencia a tener presente: el APK que se
+      # compila mas abajo lleva punteros de 130 bytes en vez de los modelos, y
+      # sirve para detectar roturas de compilacion, no para medir su tamano.
       - uses: actions/checkout@v5
+
+      # GitHub rechaza cualquier fichero de mas de 100 MB que no este en LFS, y
+      # lo hace al recibir el push: para entonces este workflow ni siquiera ha
+      # empezado, y el unico arreglo posible ya es reescribir la historia, que
+      # deja huerfanas las ramas de todo el equipo. Ya paso una vez.
+      #
+      # Este paso avisa muy por debajo del limite, mientras el arreglo todavia
+      # es cambiar un fichero. Comprueba la pertenencia a LFS de forma
+      # explicita, para que siga siendo correcto aunque el checkout pase a
+      # descargar el contenido de LFS.
+      - name: Verificar que no haya binarios grandes fuera de LFS
+        run: |
+          UMBRAL_MB=45
+          umbral=$((UMBRAL_MB * 1024 * 1024))
+
+          # Rutas que LFS gestiona. Funciona aunque solo haya punteros en disco.
+          git lfs ls-files -n | sort -u > /tmp/en-lfs.txt || : > /tmp/en-lfs.txt
+
+          fallo=0
+          while IFS= read -r fichero; do
+            [ -f "$fichero" ] || continue
+            grep -Fxq "$fichero" /tmp/en-lfs.txt && continue
+            bytes=$(stat -c%s "$fichero")
+            if [ "$bytes" -gt "$umbral" ]; then
+              echo "::error file=$fichero::$fichero pesa $((bytes / 1048576)) MB y no esta en Git LFS"
+              fallo=1
+            fi
+          done < <(git ls-files)
+
+          if [ "$fallo" -ne 0 ]; then
+            echo
+            echo "Antes de commitear un binario grande, ponlo en LFS:"
+            echo "    git lfs track \"*.glb\""
+            echo "    git add .gitattributes"
+            echo
+            echo "Si el fichero ya esta commiteado, avisa al equipo antes de"
+            echo "migrarlo: la migracion reescribe la historia y obliga a que"
+            echo "todos reseteen sus ramas."
+            exit 1
+          fi
+          echo "Sin binarios fuera de LFS por encima de ${UMBRAL_MB} MB."
 
       # Java 17 = android/app/build.gradle.kts. cache: gradle evita re-descargar
       # dependencias nativas en cada corrida (ML Kit, MediaPipe, cámara).
