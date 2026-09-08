@@ -135,7 +135,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                               crossAxisCount: 2,
                               mainAxisSpacing: 16,
                               crossAxisSpacing: 16,
-                              childAspectRatio: 0.64,
+                              childAspectRatio: 0.58,
                             ),
                           ),
                         )
@@ -460,7 +460,7 @@ class _FeaturedPieceCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(28),
         child: Container(
-          height: 230,
+          height: 244,
           decoration: BoxDecoration(
             color: const Color(0xFFFFFCF8),
             borderRadius: BorderRadius.circular(28),
