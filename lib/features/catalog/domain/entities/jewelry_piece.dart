@@ -30,6 +30,11 @@ class JewelryPiece {
   final String? material;
   final String? descripcion;
 
+  /// Corrección de giro (eje vertical, grados) para modelos exportados con el
+  /// frente hacia atrás. 0 = sin corrección. Ver `orientacion_yaw_deg` en
+  /// `catalog.json` / D3.
+  final double orientacionYawDeg;
+
   const JewelryPiece({
     required this.id,
     required this.nombre,
@@ -39,5 +44,6 @@ class JewelryPiece {
     required this.dimensionesMm,
     this.material,
     this.descripcion,
+    this.orientacionYawDeg = 0,
   });
 }

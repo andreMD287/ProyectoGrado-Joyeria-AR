@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../../core/assets/resolved_model_asset.dart';
 import '../../../../core/di/providers.dart';
@@ -88,6 +90,10 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
   /// pantalla para poder verificar el tracking en dispositivo sin
   /// recompilar ni depender del cable.
   bool _debugOverlay = false;
+
+  /// Lupa: amplia digitalmente la vista (camara + joya) centrada en el
+  /// punto de anclaje, para ver el detalle de la pieza de cerca.
+  bool _magnifierOn = false;
 
   JewelryPiece get piece => widget.piece;
 
@@ -354,6 +360,7 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
                     landmarks: landmarks,
                     fps: fps,
                     showDebug: _debugOverlay,
+                    magnify: _magnifierOn,
                   )
                 : const _CameraLoadingView(),
           ),
@@ -361,10 +368,23 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
           Positioned(
             right: 12,
             top: 12,
-            child: _DebugToggle(
+            child: _ToggleButton(
               enabled: _debugOverlay,
+              icon: Icons.my_location_rounded,
               onPressed: () => setState(
                 () => _debugOverlay = !_debugOverlay,
+              ),
+            ),
+          ),
+
+          Positioned(
+            right: 12,
+            top: 58,
+            child: _ToggleButton(
+              enabled: _magnifierOn,
+              icon: Icons.search_rounded,
+              onPressed: () => setState(
+                () => _magnifierOn = !_magnifierOn,
               ),
             ),
           ),
@@ -664,13 +684,16 @@ class _CameraLoadingView extends StatelessWidget {
   }
 }
 
-/// Boton discreto para activar el overlay de diagnostico de landmarks.
-class _DebugToggle extends StatelessWidget {
+/// Boton discreto de encendido/apagado sobre la vista de camara (debug,
+/// lupa, etc.), resaltado en verde cuando esta activo.
+class _ToggleButton extends StatelessWidget {
   final bool enabled;
+  final IconData icon;
   final VoidCallback onPressed;
 
-  const _DebugToggle({
+  const _ToggleButton({
     required this.enabled,
+    required this.icon,
     required this.onPressed,
   });
 
@@ -688,7 +711,7 @@ class _DebugToggle extends StatelessWidget {
           width: 38,
           height: 38,
           child: Icon(
-            Icons.my_location_rounded,
+            icon,
             size: 19,
             color: enabled ? const Color(0xFF11331F) : Colors.white,
           ),
@@ -704,6 +727,12 @@ class _CameraOverlay extends ConsumerWidget {
   final List<Landmark> landmarks;
   final double fps;
   final bool showDebug;
+  final bool magnify;
+
+  /// Cuanto amplia la lupa. Zoom digital (recorta y escala lo ya renderizado,
+  /// no gana nitidez real) para no depender del zoom optico de la camara, que
+  /// recorta desde el centro del frame y no desde donde esta la joya.
+  static const double _magnifierZoom = 2.2;
 
   const _CameraOverlay({
     required this.piece,
@@ -711,6 +740,7 @@ class _CameraOverlay extends ConsumerWidget {
     required this.landmarks,
     required this.fps,
     required this.showDebug,
+    required this.magnify,
   });
 
   @override
@@ -751,7 +781,7 @@ class _CameraOverlay extends ConsumerWidget {
               areaHeight: constraints.maxHeight,
             );
 
-            return Stack(
+            final stack = Stack(
               fit: StackFit.expand,
               children: [
                 FittedBox(
@@ -782,6 +812,27 @@ class _CameraOverlay extends ConsumerWidget {
                     fps: fps,
                   ),
               ],
+            );
+
+            if (!magnify || anchor == null) return stack;
+
+            // Ancla el zoom en el punto donde esta la joya (no en el centro
+            // del frame): Alignment usa fracciones -1..1 del propio ancho y
+            // alto del Stack, que aqui coincide con el area disponible.
+            final centerX = fit.xOf(anchor!.position.x);
+            final centerY = fit.yOf(anchor!.position.y);
+            final alignX =
+                (centerX / constraints.maxWidth) * 2 - 1;
+            final alignY =
+                (centerY / constraints.maxHeight) * 2 - 1;
+
+            return Transform.scale(
+              scale: _magnifierZoom,
+              alignment: Alignment(
+                alignX.clamp(-1.0, 1.0),
+                alignY.clamp(-1.0, 1.0),
+              ),
+              child: stack,
             );
           },
         );
@@ -932,26 +983,122 @@ class _ModelOverlay extends ConsumerWidget {
             data: (src) => IgnorePointer(
               child: Transform.rotate(
                 angle: anchor.rollRadians + _rollOffset,
-                child: ModelViewer(
+                child: _LiveOrientationModelViewer(
                   // El tamano NO entra en la key: con escala dinamica cambia
                   // en cada frame y recrearia el WebView del visor entero.
                   key: ValueKey(
                     'model-${piece.categoria.id}-${piece.id}',
                   ),
+                  elementId: 'mv-${piece.id}',
                   src: src,
-                  backgroundColor:
-                      Colors.transparent,
-                  cameraControls: false,
-                  disableZoom: true,
-                  disablePan: true,
-                  disableTap: true,
-                  autoRotate: false,
+                  staticYawDeg: piece.orientacionYawDeg,
+                  liveYawRadians: anchor.yawRadians,
                 ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Envuelve `ModelViewer` para poder rotar el modelo 3D **en vivo** (yaw de
+/// pulseras), sin recrear el WebView en cada frame.
+///
+/// `model_viewer_plus` arma su HTML una sola vez en `initState`: cambiar el
+/// prop `orientation` en un rebuild de Flutter no hace nada despues del
+/// primer build (investigado para el spike de rotacion 3D). La unica forma
+/// de actualizarlo es tomar el `WebViewController` (via `onWebViewCreated`)
+/// y ejecutar JS directamente sobre el elemento (`id`) del `<model-viewer>`.
+///
+/// Como este widget mantiene la misma `key` entre frames (ver `_ModelOverlay`),
+/// su `State` sobrevive a cada nuevo `AnchorPose` y `didUpdateWidget` es el
+/// punto donde se aplica el yaw mas reciente.
+class _LiveOrientationModelViewer extends StatefulWidget {
+  final String elementId;
+  final String src;
+  final double staticYawDeg;
+  final double? liveYawRadians;
+
+  const _LiveOrientationModelViewer({
+    super.key,
+    required this.elementId,
+    required this.src,
+    required this.staticYawDeg,
+    required this.liveYawRadians,
+  });
+
+  @override
+  State<_LiveOrientationModelViewer> createState() =>
+      _LiveOrientationModelViewerState();
+}
+
+class _LiveOrientationModelViewerState
+    extends State<_LiveOrientationModelViewer> {
+  WebViewController? _controller;
+  double? _lastAppliedYawDeg;
+
+  @override
+  void didUpdateWidget(covariant _LiveOrientationModelViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _applyYawIfNeeded();
+  }
+
+  /// Empuja el yaw actual al elemento vivo, si cambio lo suficiente como para
+  /// notarse (evita saturar el puente JS con actualizaciones de fraccion de
+  /// grado en cada frame de tracking).
+  void _applyYawIfNeeded() {
+    final controller = _controller;
+    final liveYawRadians = widget.liveYawRadians;
+    if (controller == null || liveYawRadians == null) return;
+
+    final totalYawDeg =
+        widget.staticYawDeg + liveYawRadians * 180 / math.pi;
+    if (_lastAppliedYawDeg != null &&
+        (totalYawDeg - _lastAppliedYawDeg!).abs() < 1.0) {
+      return;
+    }
+    _lastAppliedYawDeg = totalYawDeg;
+
+    final yawStr = totalYawDeg.toStringAsFixed(1);
+    // Diagnostico temporal: confirma si el elemento se encuentra y que valor
+    // queda puesto, para separar "el calculo del yaw esta mal" de "el yaw se
+    // calcula bien pero no se refleja en el visor".
+    unawaited(
+      controller.runJavaScriptReturningResult(
+        "(function(){"
+        "var el = document.getElementById('${widget.elementId}');"
+        "if (!el) return 'no-element';"
+        "el.orientation = '0deg 0deg ${yawStr}deg';"
+        "return el.orientation;"
+        "})();",
+      ).then((result) {
+        debugPrint('[yaw] enviado ${yawStr}deg -> elemento devolvio: $result');
+      }).catchError((Object e) {
+        debugPrint('[yaw] error ejecutando JS: $e');
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final staticYawStr = widget.staticYawDeg.toStringAsFixed(1);
+    return ModelViewer(
+      key: ValueKey('${widget.elementId}-viewer'),
+      id: widget.elementId,
+      src: widget.src,
+      orientation: '0deg 0deg ${staticYawStr}deg',
+      onWebViewCreated: (controller) {
+        _controller = controller;
+        _applyYawIfNeeded();
+      },
+      backgroundColor: Colors.transparent,
+      cameraControls: false,
+      disableZoom: true,
+      disablePan: true,
+      disableTap: true,
+      autoRotate: false,
     );
   }
 }
@@ -1035,9 +1182,12 @@ class _LandmarkDebugLayer extends StatelessWidget {
           'ancla ${a.position.x.toStringAsFixed(3)}, '
           '${a.position.y.toStringAsFixed(3)}',
         )
-        ..write(
+        ..writeln(
           'roll ${(a.rollRadians * 180 / math.pi).toStringAsFixed(0)}deg   '
           'esc ${a.scale?.toStringAsFixed(3) ?? "-"}',
+        )
+        ..write(
+          'yaw ${a.yawRadians == null ? "-" : (a.yawRadians! * 180 / math.pi).toStringAsFixed(1)}deg',
         );
     }
     return buffer.toString();

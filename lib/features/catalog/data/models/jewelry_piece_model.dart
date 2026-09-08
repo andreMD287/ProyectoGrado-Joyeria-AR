@@ -12,6 +12,7 @@ class JewelryPieceModel {
   final Map<String, dynamic> dimensionesMm;
   final String? material;
   final String? descripcion;
+  final double orientacionYawDeg;
 
   const JewelryPieceModel({
     required this.id,
@@ -22,6 +23,7 @@ class JewelryPieceModel {
     required this.dimensionesMm,
     this.material,
     this.descripcion,
+    this.orientacionYawDeg = 0,
   });
 
   factory JewelryPieceModel.fromJson(Map<String, dynamic> json) {
@@ -34,6 +36,8 @@ class JewelryPieceModel {
       dimensionesMm: (json['dimensiones_mm'] as Map).cast<String, dynamic>(),
       material: json['material'] as String?,
       descripcion: json['descripcion'] as String?,
+      orientacionYawDeg:
+          (json['orientacion_yaw_deg'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -54,6 +58,7 @@ class JewelryPieceModel {
       ),
       material: material,
       descripcion: descripcion,
+      orientacionYawDeg: orientacionYawDeg,
     );
   }
 }

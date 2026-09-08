@@ -40,6 +40,7 @@ Cada pieza se describe con los siguientes campos. Los tipos de anclaje están ac
 | `descripcion` | string | No | Texto breve para la ficha en la UI. |
 | `estado` | enum | Sí | `pendiente` \| `modelado` \| `validado` (avance de producción del modelo). |
 | `notas_material` | string | No | Aproximaciones aplicadas (p. ej. gema opaca en vez de transmisión — ver D1 §4.4). |
+| `orientacion_yaw_deg` | number | No | Corrección de giro sobre el eje vertical (grados) para modelos exportados con el frente hacia atrás. Por defecto `0`. Es un parche a nivel de catálogo, no reemplaza corregir el modelo en origen (D1). |
 
 ### 2.1 Subesquema `dimensiones_mm`
 | Campo | Aplica a | Descripción |

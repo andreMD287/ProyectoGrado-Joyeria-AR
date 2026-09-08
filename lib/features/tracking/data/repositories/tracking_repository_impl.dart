@@ -113,6 +113,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
   LandmarkStabilizer? _sessionStabilizer;
   AngleStabilizer? _rollStabilizer;
   ScalarStabilizer? _scaleStabilizer;
+  ScalarStabilizer? _yawStabilizer;
 
   @override
   Stream<TrackingFrame> trackingStream(JewelryCategory category) {
@@ -136,6 +137,10 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // dispositivo el tamaño de la pieza no llegaba a cambiar a la vista.
         _rollStabilizer = AngleStabilizer(minCutoff: 1.5, beta: 0.5);
         _scaleStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
+        // Yaw de pulseras: no da vuelta completa (queda en ±90°), así que no
+        // necesita el manejo circular de AngleStabilizer. Mismo afinado que
+        // roll/escala como punto de partida, a validar en dispositivo.
+        _yawStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
         _lost = true;
         _lastDetectionMs = 0;
         final runner = _runnerFor(strategy.detectorKind);
@@ -204,12 +209,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
     final position =
         (_sessionStabilizer ?? stabilizer).filter(anchor.position, tSeconds);
     final scale = anchor.scale;
+    final yaw = anchor.yawRadians;
     return AnchorPose(
       position: position,
       rollRadians:
           _rollStabilizer?.filter(anchor.rollRadians, tSeconds) ??
               anchor.rollRadians,
       scale: scale == null ? null : _scaleStabilizer?.filter(scale, tSeconds),
+      yawRadians: yaw == null ? null : _yawStabilizer?.filter(yaw, tSeconds),
       confidence: anchor.confidence,
     );
   }
@@ -220,6 +227,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _sessionStabilizer?.reset();
     _rollStabilizer?.reset();
     _scaleStabilizer?.reset();
+    _yawStabilizer?.reset();
   }
 
   /// Relación ancho/alto del frame **ya rotado a vertical**, que es el marco en
@@ -259,6 +267,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _sessionStabilizer = null;
     _rollStabilizer = null;
     _scaleStabilizer = null;
+    _yawStabilizer = null;
     stabilizer.reset();
     _lost = true;
     final controller = _controller;

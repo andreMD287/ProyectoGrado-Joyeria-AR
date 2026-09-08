@@ -23,7 +23,7 @@ class NecklaceStrategy implements TrackingStrategy {
 
   const NecklaceStrategy({
     this.minConfidence = 0.5,
-    this.neckDropFactor = 0.06,
+    this.neckDropFactor = 0.02,
   });
 
   @override
@@ -38,7 +38,7 @@ class NecklaceStrategy implements TrackingStrategy {
   @override
   AnchorPose? computeAnchor(
     List<Landmark> landmarks, {
-    double imageAspect = 1.0, // esta estrategia aun no estima escala ni roll
+    double imageAspect = 1.0,
   }) {
     if (landmarks.length <= rightShoulder) return null;
     final l = landmarks[leftShoulder];
@@ -52,7 +52,9 @@ class NecklaceStrategy implements TrackingStrategy {
     final midZ = (l.z + r.z) / 2;
     final dx = r.x - l.x;
     final dy = r.y - l.y;
-    final width = math.sqrt(dx * dx + dy * dy);
+    // Ancho de hombros medido en pantalla, corregido por aspecto: sin esto,
+    // una foto vertical/horizontal medirian distinto el mismo ancho real.
+    final width = _screenDistance(dx, dy, imageAspect);
     final anchorY = midY + neckDropFactor * width;
     // Eje de los hombros: su inclinación no depende del sentido en que se
     // recorra, y con la cámara frontal el vector viene invertido.
@@ -61,7 +63,21 @@ class NecklaceStrategy implements TrackingStrategy {
     return AnchorPose(
       position: Vec3(midX, anchorY, midZ),
       rollRadians: roll,
+      // Proxy de escala con la distancia a la cámara, igual que
+      // `BraceletStrategy.palmWidth`: antes de esto el collar se dibujaba
+      // siempre al tamaño fijo de categoria (`_fallbackSize`), que con una
+      // cadena de eslabones finos se veía como puntos sueltos en vez de una
+      // cadena continua.
+      scale: width,
       confidence: math.min(lv, rv),
     );
+  }
+
+  /// Longitud de un desplazamiento normalizado medida en pantalla, expresada
+  /// en unidades del ancho del frame. Mismo criterio que
+  /// `BraceletStrategy._screenDistance`.
+  static double _screenDistance(double dx, double dy, double imageAspect) {
+    final scaledY = dy / imageAspect;
+    return math.sqrt(dx * dx + scaledY * scaledY);
   }
 }

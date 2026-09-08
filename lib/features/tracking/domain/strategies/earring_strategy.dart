@@ -11,7 +11,9 @@ import 'tracking_strategy.dart';
 /// De frente, los landmarks de oreja de ML Kit son inestables (aparecen /
 /// desaparecen) y alternar izq/der hace que el modelo salte por toda la cara.
 /// Por eso el anclaje primario son los puntos derivados del **bounding box**
-/// del rostro (índices 6 y 7), con un lado **bloqueado** durante la sesión.
+/// del rostro (índices 6 y 7), con un lado **bloqueado** durante la sesión:
+/// solo cambia si el lado contrario sostiene una señal lateral clara varios
+/// frames seguidos (giro real de cabeza, no ruido puntual del bbox).
 ///
 /// Orden del `FaceDetectorDataSource`:
 /// 0–1 orejas · 2–3 ojos · 4–5 mejillas · 6–7 lóbulos bbox.
@@ -29,6 +31,12 @@ class EarringStrategy implements TrackingStrategy {
   int? _lockedSide;
   int _missFrames = 0;
   static const int _maxMissBeforeUnlock = 8;
+
+  /// Frames consecutivos con señal lateral clara hacia el lado contrario al
+  /// bloqueado. Solo se cambia de lado tras sostenerlo [_minFramesToSwitch]
+  /// frames seguidos — un giro real de cabeza, no ruido puntual del bbox.
+  int _switchFrames = 0;
+  static const int _minFramesToSwitch = 6;
 
   /// Lado elegido por el usuario en la pantalla de preparación (0 = izquierdo,
   /// 1 = derecho, `null` = automático). A diferencia de [_lockedSide], no lo
@@ -54,6 +62,7 @@ class EarringStrategy implements TrackingStrategy {
   void reset() {
     _lockedSide = null;
     _missFrames = 0;
+    _switchFrames = 0;
   }
 
   bool _present(Landmark lm) => (lm.visibility ?? 0) > 0;
@@ -115,20 +124,32 @@ class EarringStrategy implements TrackingStrategy {
     );
   }
 
+  /// Diferencia lateral mínima antes de confiar en el bbox como señal de
+  /// giro real. El bbox es simétrico por definición alrededor de su propio
+  /// centro, así que de frente casi siempre empata (o casi) — por debajo de
+  /// este umbral no hay señal real, solo ruido de detección.
+  static const double _lateralThreshold = 0.01;
+
   int? _resolveSide(List<Landmark> landmarks) {
     if (_forcedSide != null) return _forcedSide;
-    if (_lockedSide != null) return _lockedSide;
 
-    // Preferir el lado cuyo lóbulo bbox existe; si ambos, el de mayor |x-0.5|
-    // (más lateral = oreja más visible).
     final hasL = landmarks.length > leftBBoxLobe &&
         _present(landmarks[leftBBoxLobe]);
     final hasR = landmarks.length > rightBBoxLobe &&
         _present(landmarks[rightBBoxLobe]);
+
+    if (_lockedSide != null) {
+      _maybeSwitchLockedSide(landmarks, hasL, hasR);
+      return _lockedSide;
+    }
+
+    // Preferir el lado cuyo lóbulo bbox existe; si ambos, usar hacia dónde se
+    // desplazó la caja completa (ver [_lateralCandidate]) para inferir cuál
+    // oreja se expuso.
     if (hasL && hasR) {
-      final ld = (landmarks[leftBBoxLobe].x - 0.5).abs();
-      final rd = (landmarks[rightBBoxLobe].x - 0.5).abs();
-      return ld >= rd ? 0 : 1;
+      return _lateralCandidate(landmarks) ??
+          _earPresenceFallback(landmarks) ??
+          0; // sin señal real: izquierdo por defecto.
     }
     if (hasL) return 0;
     if (hasR) return 1;
@@ -137,6 +158,57 @@ class EarringStrategy implements TrackingStrategy {
     if (_present(landmarks[leftEar])) return 0;
     if (_present(landmarks[rightEar])) return 1;
     return null;
+  }
+
+  /// Lado sugerido por la posición lateral del bbox, o `null` si de frente
+  /// (bbox empatado, sin señal real de giro).
+  ///
+  /// Verificado en dispositivo: al girar la cabeza, la caja **completa** se
+  /// desplaza hacia el lado al que se gira (no se estira hacia el lado que
+  /// se expone). Si giras para mostrar tu oreja derecha, toda la caja se
+  /// corre hacia la izquierda de la pantalla, así que es `leftBBoxLobe` el
+  /// que se aleja más del centro — no `rightBBoxLobe`. Por eso el lado
+  /// elegido es el **contrario** al lóbulo más lateral.
+  int? _lateralCandidate(List<Landmark> landmarks) {
+    final ld = (landmarks[leftBBoxLobe].x - 0.5).abs();
+    final rd = (landmarks[rightBBoxLobe].x - 0.5).abs();
+    if ((ld - rd).abs() <= _lateralThreshold) return null;
+    return ld >= rd ? 1 : 0;
+  }
+
+  /// Desempate de frente: a diferencia del bbox (que siempre existe), la
+  /// oreja cruda de ML Kit solo se reporta cuando de verdad se ve, así que sí
+  /// varía lado a lado.
+  int? _earPresenceFallback(List<Landmark> landmarks) {
+    final earL = _present(landmarks[leftEar]);
+    final earR = _present(landmarks[rightEar]);
+    if (earL && !earR) return 0;
+    if (earR && !earL) return 1;
+    return null;
+  }
+
+  /// Con un lado ya bloqueado, solo cambia al contrario tras sostener una
+  /// señal lateral clara por [_minFramesToSwitch] frames seguidos — un giro
+  /// real de cabeza, no ruido puntual de un frame del bbox.
+  void _maybeSwitchLockedSide(
+    List<Landmark> landmarks,
+    bool hasL,
+    bool hasR,
+  ) {
+    if (!hasL || !hasR) {
+      _switchFrames = 0;
+      return;
+    }
+    final candidate = _lateralCandidate(landmarks);
+    if (candidate != null && candidate != _lockedSide) {
+      _switchFrames++;
+      if (_switchFrames >= _minFramesToSwitch) {
+        _lockedSide = candidate;
+        _switchFrames = 0;
+      }
+    } else {
+      _switchFrames = 0;
+    }
   }
 
   /// Cuánto se separa el punto hacia afuera de la cara, en fracciones de la

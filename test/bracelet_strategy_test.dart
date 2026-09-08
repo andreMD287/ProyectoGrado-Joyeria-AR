@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jewelry_ar/features/tracking/domain/entities/anchor_pose.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/bracelet_strategy.dart';
 
@@ -10,6 +11,7 @@ List<Landmark> hand({
   required (double, double) wrist,
   required (double, double) indexMcp,
   required (double, double) pinkyMcp,
+  (double, double)? thumbTip,
 }) {
   final points = List<Landmark>.filled(21, const Landmark(0, 0, 0));
   points[BraceletStrategy.wristLandmark] = Landmark(wrist.$1, wrist.$2, 0);
@@ -17,11 +19,23 @@ List<Landmark> hand({
       Landmark(indexMcp.$1, indexMcp.$2, 0);
   points[BraceletStrategy.pinkyMcpLandmark] =
       Landmark(pinkyMcp.$1, pinkyMcp.$2, 0);
+  if (thumbTip != null) {
+    points[BraceletStrategy.thumbTipLandmark] =
+        Landmark(thumbTip.$1, thumbTip.$2, 0);
+  }
   return points;
 }
 
 void main() {
-  const strategy = BraceletStrategy();
+  // Una instancia fresca por prueba: BraceletStrategy ya no es sin estado
+  // (calibra un maximo de sesion para el yaw, ver bracelet_strategy.dart),
+  // asi que compartir una sola instancia entre pruebas dejaria que el orden
+  // de ejecucion contaminara el `scale` calculado en unas con lo calibrado
+  // en otras.
+  late BraceletStrategy strategy;
+  setUp(() {
+    strategy = BraceletStrategy();
+  });
 
   group('anclaje en el antebrazo', () {
     test('desplaza el ancla mas alla de la muneca, alejandose de la palma', () {
@@ -73,9 +87,9 @@ void main() {
         pinkyMcp: (0.6, 0.4),
       );
 
-      final corto = const BraceletStrategy(forearmOffset: 0.2)
+      final corto = BraceletStrategy(forearmOffset: 0.2)
           .computeAnchor(points)!;
-      final largo = const BraceletStrategy(forearmOffset: 0.8)
+      final largo = BraceletStrategy(forearmOffset: 0.8)
           .computeAnchor(points)!;
 
       expect(corto.position.y, lessThan(largo.position.y));
@@ -181,6 +195,160 @@ void main() {
       expect(cuadrado.rollRadians, closeTo(math.pi / 4, 1e-9));
       expect(alto.rollRadians, greaterThan(cuadrado.rollRadians));
       expect(alto.rollRadians, closeTo(math.atan2(0.2, 0.1), 1e-9));
+    });
+  });
+
+  group('yaw aproximado (giro de muneca)', () {
+    test('el primer frame calibra el maximo visto y da yaw cero', () {
+      final s = BraceletStrategy();
+      final anchor = s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.4, 0.4), pinkyMcp: (0.6, 0.4)),
+      )!;
+
+      expect(anchor.yawRadians, closeTo(0, 1e-9));
+    });
+
+    test(
+        'una palma mas angosta que el maximo visto reporta mayor magnitud '
+        'de yaw', () {
+      final s = BraceletStrategy();
+      // Calibra el maximo: ancho de palma == largo de antebrazo (ratio 1.0).
+      s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.4, 0.4), pinkyMcp: (0.6, 0.4)),
+      );
+      // Palma a la mitad de ancho con el mismo largo de antebrazo: ratio 0.5.
+      final anchor = s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.45, 0.4), pinkyMcp: (0.55, 0.4)),
+      )!;
+
+      // acos(0.5) = 60 grados = pi/3.
+      expect(anchor.yawRadians!.abs(), closeTo(math.pi / 3, 1e-6));
+    });
+
+    test(
+        'el lado del pulgar decide el signo, tras sostenerlo varios frames '
+        '(histeresis)', () {
+      final derecha = BraceletStrategy();
+      derecha.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.4, 0.4), pinkyMcp: (0.6, 0.4)),
+      );
+      // Lado derecho del centro de palma (x=0.5): coincide con el signo por
+      // defecto, no necesita varios frames para confirmarse.
+      final anchorDerecha = derecha.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.45, 0.4),
+          pinkyMcp: (0.55, 0.4),
+          thumbTip: (0.6, 0.4),
+        ),
+      )!;
+
+      final izquierda = BraceletStrategy();
+      izquierda.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.4, 0.4), pinkyMcp: (0.6, 0.4)),
+      );
+      // Lado izquierdo: contrario al signo por defecto, hace falta
+      // sostenerlo varios frames (ver _minFramesToFlipSign) para que cambie.
+      AnchorPose? anchorIzquierda;
+      for (var i = 0; i < 3; i++) {
+        anchorIzquierda = izquierda.computeAnchor(
+          hand(
+            wrist: (0.5, 0.6),
+            indexMcp: (0.45, 0.4),
+            pinkyMcp: (0.55, 0.4),
+            thumbTip: (0.4, 0.4),
+          ),
+        );
+      }
+
+      expect(anchorDerecha.yawRadians, isPositive);
+      expect(anchorIzquierda!.yawRadians, isNegative);
+      expect(
+        anchorDerecha.yawRadians!.abs(),
+        closeTo(anchorIzquierda.yawRadians!.abs(), 1e-9),
+      );
+    });
+
+    test(
+        'un solo frame con la señal contraria no alcanza para voltear el '
+        'signo (ruido de un solo frame)', () {
+      final s = BraceletStrategy();
+      s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.4, 0.4), pinkyMcp: (0.6, 0.4)),
+      );
+
+      final anchor = s.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.45, 0.4),
+          pinkyMcp: (0.55, 0.4),
+          thumbTip: (0.4, 0.4), // propondria el lado contrario
+        ),
+      )!;
+
+      // Un solo frame no basta: se mantiene el signo por defecto.
+      expect(anchor.yawRadians, isPositive);
+    });
+
+    test('reset() borra el maximo calibrado', () {
+      final s = BraceletStrategy();
+      s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.4, 0.4), pinkyMcp: (0.6, 0.4)),
+      );
+
+      s.reset();
+
+      final anchor = s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.45, 0.4), pinkyMcp: (0.55, 0.4)),
+      )!;
+      expect(anchor.yawRadians, closeTo(0, 1e-9));
+    });
+
+    test(
+        'tras varios frames sin mano detectable, el siguiente frame valido '
+        'recalibra el maximo desde cero', () {
+      final s = BraceletStrategy();
+      // Calibra con una palma ancha (ratio alto).
+      s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.3, 0.4), pinkyMcp: (0.7, 0.4)),
+      );
+
+      // La mano sale del encuadre: varios frames sin landmarks suficientes.
+      for (var i = 0; i < 3; i++) {
+        s.computeAnchor(const []);
+      }
+
+      // Reaparece con una palma mas angosta que la calibrada antes de salir.
+      // Sin recalibrar, esto se leeria como un giro fuerte; al recalibrar,
+      // este frame se vuelve la nueva referencia "de frente": yaw cero.
+      final anchor = s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.45, 0.4), pinkyMcp: (0.55, 0.4)),
+      )!;
+
+      expect(anchor.yawRadians, closeTo(0, 1e-9));
+    });
+
+    test(
+        'un frame con geometria degenerada no dispara el maximo mas alla '
+        'del tope de sanidad', () {
+      final s = BraceletStrategy();
+      // axisLength casi cero (pero no cero) con palmWidth normal: sin tope,
+      // el ratio crudo se dispararia a miles.
+      s.computeAnchor(
+        hand(
+          wrist: (0.5001, 0.4001),
+          indexMcp: (0.3, 0.4),
+          pinkyMcp: (0.7, 0.4),
+        ),
+      );
+
+      // Frame normal despues: si el maximo hubiera quedado disparado, esto
+      // se leeria como un giro fuerte (cerca de 90 grados) en vez de casi 0.
+      final anchor = s.computeAnchor(
+        hand(wrist: (0.5, 0.6), indexMcp: (0.3, 0.4), pinkyMcp: (0.7, 0.4)),
+      )!;
+
+      expect(anchor.yawRadians!.abs(), lessThan(0.05));
     });
   });
 
