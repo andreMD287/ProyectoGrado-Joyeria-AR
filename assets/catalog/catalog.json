@@ -47,7 +47,7 @@
     },
     {
       "id": "collar-cadena-01",
-      "nombre": "Collar cadena fina con dije",
+      "nombre": "Collar cadena fina con dije I",
       "categoria": "collar",
       "tipo_anclaje": "cuello",
       "landmark_anclaje": [11, 12],
@@ -61,7 +61,7 @@
     },
     {
       "id": "collar-cadena-02",
-      "nombre": "Collar cadena fina con dije",
+      "nombre": "Collar cadena fina con dije II",
       "categoria": "collar",
       "tipo_anclaje": "cuello",
       "landmark_anclaje": [11, 12],
