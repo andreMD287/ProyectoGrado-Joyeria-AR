@@ -18,7 +18,7 @@
     },
     {
       "id": "pulsera-perlas-01",
-      "nombre": "Pulsera de perlas básica (prueba)",
+      "nombre": "Pulsera de perlas básica",
       "categoria": "pulsera",
       "tipo_anclaje": "muneca",
       "landmark_anclaje": 0,
@@ -26,7 +26,7 @@
       "foto": "assets/catalog/fotos/pulsera-eslabon-01.jpg",
       "dimensiones_mm": { "alto": 8, "ancho": 180, "profundidad": 4, "diametro": 60 },
       "material": "plata con perlas",
-      "descripcion": "Pieza de prueba subida por Valentina.",
+      "descripcion": "",
       "estado": "pendiente",
       "notas_material": ""
     },
@@ -47,7 +47,7 @@
     },
     {
       "id": "collar-cadena-01",
-      "nombre": "Collar cadena fina con dije",
+      "nombre": "Collar cadena fina con dije I",
       "categoria": "collar",
       "tipo_anclaje": "cuello",
       "landmark_anclaje": [11, 12],
@@ -57,6 +57,21 @@
       "material": "oro 18k",
       "descripcion": "Collar de cadena fina con dije central.",
       "estado": "modelado",
+      "notas_material": ""
+    },
+    {
+      "id": "collar-cadena-02",
+      "nombre": "Collar cadena fina con dije II",
+      "categoria": "collar",
+      "tipo_anclaje": "cuello",
+      "landmark_anclaje": [11, 12],
+      "modelo_glb": "assets/models/Collar2_Juanes.glb",
+      "foto": "assets/catalog/fotos/collar-cadena-01.jpg",
+      "dimensiones_mm": { "alto": 15, "ancho": 12, "profundidad": 3, "longitud": 420 },
+      "material": "oro 18k",
+      "descripcion": "",
+      "orientacion_yaw_deg": 90,
+      "estado": "pendiente",
       "notas_material": ""
     }
   ]
