@@ -355,7 +355,7 @@ No se replica la tabla aquí para evitar divergencia entre documentos.
 | 6 | Aretes y collares | ✅ Funcional en dispositivo (deuda §6.5 / precisión) |
 | 7 | Paridad iOS (manos) | ✅ Hecho |
 
-Pendiente de producto/arquitectura abierta: el render se percibe superpuesto y no puesto sobre el cuerpo (Alta, ver Parte D del SDD), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, escala mm del overlay, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5), oclusión por objetos externos (B6).
+Pendiente de producto/arquitectura abierta: migrar el render a `three_js` para que la pieza deje de verse superpuesta (Alta, ADR-16; spike en `spikes/B7-motor-render`), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, escala mm del overlay, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5), oclusión por objetos externos (B6).
 
 ---
 
