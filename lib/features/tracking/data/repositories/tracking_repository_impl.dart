@@ -173,9 +173,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
     try {
       final orientation =
           cameraService.controller?.description.sensorOrientation ?? 0;
-      final landmarks = await runner.detect(frame, orientation);
+      final detection = await runner.detect(frame, orientation);
       final anchor = strategy.computeAnchor(
-        landmarks,
+        detection,
         imageAspect: uprightAspect(frame, orientation),
       );
       final controller = _controller;
@@ -196,7 +196,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
       _lastDetectionMs = now;
       controller.add(TrackingFrame(
         anchor: _smooth(anchor, now / 1000.0),
-        landmarks: landmarks,
+        landmarks: detection.landmarks,
       ));
     } catch (_) {
       // Se descarta el frame con error para no interrumpir el stream.

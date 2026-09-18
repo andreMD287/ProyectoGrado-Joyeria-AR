@@ -25,7 +25,17 @@ dependencies:
   webview_flutter: ^4.14.0          # Puente JS al <model-viewer> para orientacion en vivo
 
   # ── Detección de landmarks ──
-  hand_landmarker: ^3.0.0           # MediaPipe manos (JNI, Android-only) — pulseras
+  # MediaPipe manos (JNI, Android-only) — pulseras.
+  # Fork propio de la v3.0.0: el plugin publicado solo serializa los landmarks
+  # normalizados, cuya `z` es profundidad relativa en unidades de imagen. El
+  # fork expone además `worldLandmarks` (métricos, en metros), que son los que
+  # permiten reconstruir la orientación 3D real de la mano. Se fija el commit,
+  # no la rama, para que el CI resuelva siempre lo mismo.
+  # No se forkeó `main` (3.1.0) porque exige Dart ^3.12 y el proyecto va en 3.11.5.
+  hand_landmarker:
+    git:
+      url: https://github.com/andreMD287/hand_landmarker.git
+      ref: 1f2abc981ee794781cefd225758a18a89586b935
   google_mlkit_face_detection: ^0.13.2   # rostro — aretes (B3)
   google_mlkit_pose_detection: ^0.14.0   # pose/hombros — collares (B2)
 

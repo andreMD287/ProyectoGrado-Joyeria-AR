@@ -6,6 +6,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../../../../core/math/geometry.dart';
 import '../../domain/entities/landmark.dart';
+import '../../domain/entities/landmark_frame.dart';
 import 'landmark_detector.dart';
 
 /// Detector de pose para collares, basado en `google_mlkit_pose_detection`
@@ -27,21 +28,25 @@ class PoseDetectorDataSource implements LandmarkDetector {
   Future<void> initialize() async {}
 
   @override
-  Future<List<Landmark>> detect(
+  Future<LandmarkFrame> detect(
     CameraImage frame,
     int sensorOrientation,
   ) async {
     final input = _toInputImage(frame, sensorOrientation);
-    if (input == null) return const [];
+    if (input == null) return LandmarkFrame.empty;
 
     final poses = await _detector.processImage(input);
-    if (poses.isEmpty) return const [];
+    if (poses.isEmpty) return LandmarkFrame.empty;
 
-    return _mapPose(
-      poses.first,
-      frame.width,
-      frame.height,
-      sensorOrientation,
+    // ML Kit Pose expone `z`, pero en escala cruda del modelo, no en metros:
+    // no es una reconstruccion metrica y por eso no llena esa parte.
+    return LandmarkFrame(
+      landmarks: _mapPose(
+        poses.first,
+        frame.width,
+        frame.height,
+        sensorOrientation,
+      ),
     );
   }
 

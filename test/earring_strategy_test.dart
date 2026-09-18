@@ -1,8 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
+import 'package:jewelry_ar/features/tracking/domain/entities/landmark_frame.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/earring_strategy.dart';
 
-List<Landmark> faceLandmarks({
+LandmarkFrame faceLandmarks({
   Landmark? leftEar,
   Landmark? rightEar,
   Landmark? leftEye,
@@ -13,7 +14,7 @@ List<Landmark> faceLandmarks({
   Landmark? rightBBoxLobe,
 }) {
   const absent = Landmark(0, 0, 0, visibility: 0);
-  return [
+  return LandmarkFrame(landmarks: [
     leftEar ?? absent,
     rightEar ?? absent,
     leftEye ?? absent,
@@ -22,7 +23,7 @@ List<Landmark> faceLandmarks({
     rightCheek ?? absent,
     leftBBoxLobe ?? absent,
     rightBBoxLobe ?? absent,
-  ];
+  ]);
 }
 
 void main() {

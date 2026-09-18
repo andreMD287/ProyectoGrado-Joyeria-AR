@@ -6,6 +6,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../../../../core/math/geometry.dart';
 import '../../domain/entities/landmark.dart';
+import '../../domain/entities/landmark_frame.dart';
 import 'landmark_detector.dart';
 
 /// Detector facial para aretes (`google_mlkit_face_detection`).
@@ -25,21 +26,24 @@ class FaceDetectorDataSource implements LandmarkDetector {
   Future<void> initialize() async {}
 
   @override
-  Future<List<Landmark>> detect(
+  Future<LandmarkFrame> detect(
     CameraImage frame,
     int sensorOrientation,
   ) async {
     final input = _toInputImage(frame, sensorOrientation);
-    if (input == null) return const [];
+    if (input == null) return LandmarkFrame.empty;
 
     final faces = await _detector.processImage(input);
-    if (faces.isEmpty) return const [];
+    if (faces.isEmpty) return LandmarkFrame.empty;
 
-    return _mapFace(
-      faces.first,
-      frame.width,
-      frame.height,
-      sensorOrientation,
+    // ML Kit Face no reconstruye en metros; solo landmarks de imagen.
+    return LandmarkFrame(
+      landmarks: _mapFace(
+        faces.first,
+        frame.width,
+        frame.height,
+        sensorOrientation,
+      ),
     );
   }
 

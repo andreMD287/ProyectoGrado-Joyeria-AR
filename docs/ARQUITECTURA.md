@@ -110,7 +110,7 @@ lib/
 │   │   ├── data/repositories/catalog_repository_impl.dart
 │   │   └── presentation/{controllers/catalog_controller, screens/catalog_screen, widgets/piece_card}.dart
 │   ├── tracking/
-│   │   ├── domain/entities/{landmark, anchor_pose}.dart
+│   │   ├── domain/entities/{landmark, landmark_frame, anchor_pose}.dart
 │   │   ├── domain/repositories/tracking_repository.dart
 │   │   ├── domain/strategies/
 │   │   │   ├── tracking_strategy.dart          # + enum DetectorKind
@@ -144,6 +144,13 @@ class Landmark {
   const Landmark(this.x, this.y, this.z, {this.visibility});
 }
 
+/// Lo que entrega un detector: dos espacios de coordenadas distintos (ADR-15).
+class LandmarkFrame {
+  final List<Landmark> landmarks;    // normalizados [0,1] en el preview
+  final List<Vec3> worldLandmarks;   // metricos (m); vacio si el detector no los da
+  const LandmarkFrame({this.landmarks = const [], this.worldLandmarks = const []});
+}
+
 class AnchorPose {
   final Vec3 position;
   final double rollRadians;  // orientación en el plano (no Quaternion)
@@ -154,7 +161,7 @@ class AnchorPose {
 abstract interface class TrackingStrategy {
   JewelryCategory get category;
   DetectorKind get detectorKind; // hand | face | pose
-  AnchorPose? computeAnchor(List<Landmark> landmarks);
+  AnchorPose? computeAnchor(LandmarkFrame frame);   // ver LandmarkFrame abajo
 }
 
 abstract interface class TrackingRepository {
@@ -231,6 +238,7 @@ Toda sesión de tracking crea un `DetectionIsolate` con su propia instancia del 
 |---|---|---|
 | Landmark (x, y) | Normalizado [0,1] en el espacio del preview | **Android** Face/Pose: `normalizeMlKitLandmarkToPreview` (swap 90°/270°, espejo frontal). **iOS:** división simple `x/w`, `y/h` (sin cambio). Manos: el plugin ya entrega [0,1]. |
 | Landmark (z) | Profundidad relativa | Pose deja `z` en escala cruda de ML Kit (no afecta el overlay 2D) |
+| Landmark métrico (x, y, z) | Metros, origen en el centro geométrico de la mano | Solo MediaPipe manos en Android. Viaja aparte en `LandmarkFrame` (ADR-15) y se endereza con `rotateVectorToUpright`; vacío en el resto de detectores |
 | Overlay | `left/top = position.x/y * areaSize` | Implementado en `TryOnScreen` |
 | Escala mm → tamaño en pantalla | Dimensiones del catálogo | **No implementado** (`geometry.dart` tiene `Vec3` + normalización ML Kit) |
 
@@ -305,7 +313,7 @@ La pieza se resuelve en `TryOnScreen` desde el catálogo por `pieceId` de la rut
 | `go_router` | Navegación |
 | `camera` / `permission_handler` | Captura y permisos |
 | `camera_platform_interface` | Tipos serializables (`CameraImageData`) para el isolate de detección (B5) |
-| `hand_landmarker` | Manos Android |
+| `hand_landmarker` | Manos Android. **Fork propio fijado por commit** (`andreMD287/hand_landmarker`), para exponer los landmarks métricos que el paquete publicado descartaba — ver ADR-14 en el SDD |
 | `google_mlkit_face_detection` / `pose_detection` | Aretes / collares |
 | `model_viewer_plus` | Overlay GLB en prueba virtual |
 | `ar_flutter_plugin_2` | Presente; no usado en el pipeline de anclaje corporal (ver ADR-09 en el SDD: costo nativo en el APK) |
@@ -347,7 +355,7 @@ No se replica la tabla aquí para evitar divergencia entre documentos.
 | 6 | Aretes y collares | ✅ Funcional en dispositivo (deuda §6.5 / precisión) |
 | 7 | Paridad iOS (manos) | ✅ Hecho |
 
-Pendiente de producto/arquitectura abierta: roll de pulsera (Alta), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, escala mm del overlay, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5).
+Pendiente de producto/arquitectura abierta: el render se percibe superpuesto y no puesto sobre el cuerpo (Alta, ver Parte D del SDD), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, escala mm del overlay, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5), oclusión por objetos externos (B6).
 
 ---
 

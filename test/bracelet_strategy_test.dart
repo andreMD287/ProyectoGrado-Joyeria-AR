@@ -3,11 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/anchor_pose.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
+import 'package:jewelry_ar/features/tracking/domain/entities/landmark_frame.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/bracelet_strategy.dart';
 
 /// Construye los 21 landmarks de MediaPipe Hands con todo en el origen salvo
 /// los tres que usa la estrategia.
-List<Landmark> hand({
+LandmarkFrame hand({
   required (double, double) wrist,
   required (double, double) indexMcp,
   required (double, double) pinkyMcp,
@@ -23,7 +24,7 @@ List<Landmark> hand({
     points[BraceletStrategy.thumbTipLandmark] =
         Landmark(thumbTip.$1, thumbTip.$2, 0);
   }
-  return points;
+  return LandmarkFrame(landmarks: points);
 }
 
 void main() {
@@ -315,7 +316,7 @@ void main() {
 
       // La mano sale del encuadre: varios frames sin landmarks suficientes.
       for (var i = 0; i < 3; i++) {
-        s.computeAnchor(const []);
+        s.computeAnchor(LandmarkFrame.empty);
       }
 
       // Reaparece con una palma mas angosta que la calibrada antes de salir.
@@ -354,9 +355,11 @@ void main() {
 
   group('rechazo de detecciones malas', () {
     test('sin landmarks suficientes devuelve null', () {
-      expect(strategy.computeAnchor(const []), isNull);
+      expect(strategy.computeAnchor(LandmarkFrame.empty), isNull);
       expect(
-        strategy.computeAnchor(List.filled(10, const Landmark(0, 0, 0))),
+        strategy.computeAnchor(
+          LandmarkFrame(landmarks: List.filled(10, const Landmark(0, 0, 0))),
+        ),
         isNull,
       );
     });
@@ -385,4 +388,5 @@ void main() {
       expect(anchor, isNull);
     });
   });
+
 }

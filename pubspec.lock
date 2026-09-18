@@ -275,11 +275,12 @@ packages:
   hand_landmarker:
     dependency: "direct main"
     description:
-      name: hand_landmarker
-      sha256: "028b9f4ed410208f2f72fbcdbad0eddbb9655ec3fa86ba429087dc81837a68fd"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.0"
+      path: "."
+      ref: "1f2abc981ee794781cefd225758a18a89586b935"
+      resolved-ref: "1f2abc981ee794781cefd225758a18a89586b935"
+      url: "https://github.com/andreMD287/hand_landmarker.git"
+    source: git
+    version: "3.0.0+world.1"
   jni:
     dependency: transitive
     description:

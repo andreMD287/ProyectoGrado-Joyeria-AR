@@ -1,13 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
+import 'package:jewelry_ar/features/tracking/domain/entities/landmark_frame.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/necklace_strategy.dart';
 
 /// Construye una lista de landmarks con solo los hombros definidos.
-List<Landmark> poseWithShoulders(Landmark left, Landmark right) {
+LandmarkFrame poseWithShoulders(Landmark left, Landmark right) {
   final list = List<Landmark>.filled(13, const Landmark(0, 0, 0, visibility: 0));
   list[NecklaceStrategy.leftShoulder] = left;
   list[NecklaceStrategy.rightShoulder] = right;
-  return list;
+  return LandmarkFrame(landmarks: list);
 }
 
 void main() {
@@ -87,6 +88,6 @@ void main() {
   });
 
   test('devuelve null si faltan los hombros', () {
-    expect(strategy.computeAnchor(const []), isNull);
+    expect(strategy.computeAnchor(LandmarkFrame.empty), isNull);
   });
 }

@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../../core/math/geometry.dart';
 import '../entities/anchor_pose.dart';
-import '../entities/landmark.dart';
+import '../entities/landmark_frame.dart';
 import 'tracking_strategy.dart';
 
 /// Collares: ancla bajo la línea de hombros (landmarks 11 y 12 de
@@ -37,9 +37,11 @@ class NecklaceStrategy implements TrackingStrategy {
 
   @override
   AnchorPose? computeAnchor(
-    List<Landmark> landmarks, {
+    LandmarkFrame frame, {
     double imageAspect = 1.0,
   }) {
+    // ML Kit Pose no entrega reconstruccion metrica: solo landmarks de imagen.
+    final landmarks = frame.landmarks;
     if (landmarks.length <= rightShoulder) return null;
     final l = landmarks[leftShoulder];
     final r = landmarks[rightShoulder];

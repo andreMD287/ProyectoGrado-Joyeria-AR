@@ -8,7 +8,7 @@ import 'package:flutter/services.dart'
     show BackgroundIsolateBinaryMessenger, RootIsolateToken;
 
 import '../../features/tracking/data/datasources/landmark_detector.dart';
-import '../../features/tracking/domain/entities/landmark.dart';
+import '../../features/tracking/domain/entities/landmark_frame.dart';
 import '../../features/tracking/domain/strategies/tracking_strategy.dart'
     show DetectorKind;
 import 'detection_runner.dart';
@@ -29,8 +29,8 @@ class _DetectRequest {
 
 class _DetectResponse {
   final int id;
-  final List<Landmark> landmarks;
-  const _DetectResponse(this.id, this.landmarks);
+  final LandmarkFrame result;
+  const _DetectResponse(this.id, this.result);
 }
 
 class _StopMessage {
@@ -54,7 +54,7 @@ class DetectionIsolate implements DetectionRunner {
   Isolate? _isolate;
   SendPort? _sendPort;
   ReceivePort? _receivePort;
-  final Map<int, Completer<List<Landmark>>> _pending = {};
+  final Map<int, Completer<LandmarkFrame>> _pending = {};
   int _seq = 0;
   Completer<void>? _stopAck;
 
@@ -71,7 +71,7 @@ class DetectionIsolate implements DetectionRunner {
       if (msg is SendPort) {
         ready.complete(msg);
       } else if (msg is _DetectResponse) {
-        _pending.remove(msg.id)?.complete(msg.landmarks);
+        _pending.remove(msg.id)?.complete(msg.result);
       } else if (msg is _StopAck) {
         _stopAck?.complete();
       }
@@ -83,13 +83,13 @@ class DetectionIsolate implements DetectionRunner {
     _sendPort = await ready.future;
   }
 
-  /// Envía un frame al isolate y espera los landmarks detectados.
+  /// Envía un frame al isolate y espera lo detectado.
   @override
-  Future<List<Landmark>> detect(CameraImage frame, int sensorOrientation) {
+  Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation) {
     final sendPort = _sendPort;
-    if (sendPort == null) return Future.value(const []);
+    if (sendPort == null) return Future.value(LandmarkFrame.empty);
     final id = _seq++;
-    final completer = Completer<List<Landmark>>();
+    final completer = Completer<LandmarkFrame>();
     _pending[id] = completer;
     sendPort.send(_DetectRequest(id, _toPlatformData(frame), sensorOrientation));
     return completer.future;
@@ -119,7 +119,7 @@ class DetectionIsolate implements DetectionRunner {
     _isolate = null;
     _sendPort = null;
     for (final pending in _pending.values) {
-      if (!pending.isCompleted) pending.complete(const []);
+      if (!pending.isCompleted) pending.complete(LandmarkFrame.empty);
     }
     _pending.clear();
   }
@@ -164,10 +164,10 @@ class DetectionIsolate implements DetectionRunner {
       if (msg is _DetectRequest) {
         try {
           final frame = CameraImage.fromPlatformInterface(msg.frame);
-          final landmarks = await detector.detect(frame, msg.sensorOrientation);
-          start.replyTo.send(_DetectResponse(msg.id, landmarks));
+          final result = await detector.detect(frame, msg.sensorOrientation);
+          start.replyTo.send(_DetectResponse(msg.id, result));
         } catch (_) {
-          start.replyTo.send(_DetectResponse(msg.id, const []));
+          start.replyTo.send(_DetectResponse(msg.id, LandmarkFrame.empty));
         }
       }
     }

@@ -158,6 +158,26 @@ NormalizedPoint rotateNormalizedToUpright({
   };
 }
 
+/// Misma rotación que [rotateNormalizedToUpright], pero para un **vector** en
+/// un espacio centrado en el origen, como los landmarks métricos.
+///
+/// Es la parte lineal de aquella: allí los términos `1 - …` solo reubican el
+/// resultado dentro del cuadrado [0,1], y aplicárselos a coordenadas que ya
+/// están centradas en cero las desplazaría un metro. El eje z no cambia, porque
+/// se gira alrededor de él.
+Vec3 rotateVectorToUpright({
+  required Vec3 v,
+  required int rotationDegrees,
+}) {
+  final rotation = ((rotationDegrees % 360) + 360) % 360;
+  return switch (rotation) {
+    90 => Vec3(-v.y, v.x, v.z),
+    180 => Vec3(-v.x, -v.y, v.z),
+    270 => Vec3(v.y, -v.x, v.z),
+    _ => v,
+  };
+}
+
 /// Normaliza el ángulo de un **eje** al rango (-π/2, π/2].
 ///
 /// La línea de los ojos o la de los hombros no tienen dirección: da igual

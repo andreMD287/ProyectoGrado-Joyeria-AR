@@ -4,6 +4,7 @@ import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../../core/math/geometry.dart';
 import '../entities/anchor_pose.dart';
 import '../entities/landmark.dart';
+import '../entities/landmark_frame.dart';
 import 'tracking_strategy.dart';
 
 /// Pulseras: ancla en el antebrazo, un poco más allá de la muñeca.
@@ -70,6 +71,7 @@ class BraceletStrategy implements TrackingStrategy {
   int _missedFrames = 0;
   static const int _missFramesBeforeRecalibrate = 3;
 
+
   BraceletStrategy({
     this.forearmOffset = 0.45,
     this.minPalmWidth = 0.04,
@@ -91,9 +93,10 @@ class BraceletStrategy implements TrackingStrategy {
 
   @override
   AnchorPose? computeAnchor(
-    List<Landmark> landmarks, {
+    LandmarkFrame frame, {
     double imageAspect = 1.0,
   }) {
+    final landmarks = frame.landmarks;
     if (landmarks.length <= pinkyMcpLandmark) {
       _missedFrames++;
       return null;
@@ -180,6 +183,7 @@ class BraceletStrategy implements TrackingStrategy {
       confidence: wrist.visibility ?? 1.0,
     );
   }
+
 
   /// Longitud de un desplazamiento normalizado medida en pantalla, expresada
   /// en unidades del ancho del frame. Sin la corrección por [imageAspect] una

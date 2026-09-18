@@ -4,6 +4,7 @@ import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../../core/math/geometry.dart';
 import '../entities/anchor_pose.dart';
 import '../entities/landmark.dart';
+import '../entities/landmark_frame.dart';
 import 'tracking_strategy.dart';
 
 /// Aretes: ancla en el lóbulo.
@@ -69,9 +70,12 @@ class EarringStrategy implements TrackingStrategy {
 
   @override
   AnchorPose? computeAnchor(
-    List<Landmark> landmarks, {
+    LandmarkFrame frame, {
     double imageAspect = 1.0, // esta estrategia aun no estima escala ni roll
   }) {
+    // ML Kit Face no entrega reconstruccion metrica, asi que esta estrategia
+    // solo usa los landmarks de imagen.
+    final landmarks = frame.landmarks;
     if (landmarks.length <= rightEye) return null;
     final le = landmarks[leftEye];
     final re = landmarks[rightEye];
