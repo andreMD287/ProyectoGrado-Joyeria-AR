@@ -1,13 +1,17 @@
-// Spike: ¿puede `three_js` renderizar con fondo transparente, de modo que lo
-// que esté detrás en el árbol de widgets se vea a través?
+// Spike B7 — motor de render 3D para la prueba virtual.
 //
-// Es la pregunta que decide si sirve como motor de render para la prueba
-// virtual: si el fondo no es transparente, no se puede componer la joya sobre
-// la vista de cámara y el motor queda descartado.
+// Primera parte (resuelta): ¿puede `three_js` renderizar con fondo
+// transparente, de modo que lo que esté detrás se vea a través? Sí.
 //
-// El fondo son franjas de colores fuertes a propósito: o se ven a través del
-// render 3D, o no se ven. No hay término medio ni interpretación posible.
+// Segunda parte (esta): ¿pueden convivir el render 3D y el stream de cámara a
+// una tasa usable en el dispositivo objetivo? Es el riesgo que decide si la
+// migración del render es viable, porque el presupuesto por frame ya está
+// ajustado (ver ADR-12: detección a ~10 FPS).
+//
+// El fondo ya no son franjas sino la cámara real: además de medir, es la
+// primera vista de cómo se verá la joya con el motor nuevo.
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:three_js/three_js.dart' as three;
 
@@ -34,24 +38,61 @@ class _SpikePageState extends State<SpikePage> {
   // Se crea tarde, no en initState: `ThreeJS` lee MediaQuery en su primer
   // build y **cachea** ese tamano para siempre. En arranque en frio ese primer
   // build ocurre antes de que lleguen las medidas de la ventana, el tamano
-  // queda en 0x0 y crear la textura falla con "Invalid dimensions". Por eso se
-  // espera a tener restricciones reales y se le pasa el tamano explicito.
+  // queda en 0x0 y crear la textura falla con "Invalid dimensions".
   three.ThreeJS? threeJs;
 
-  String glbStatus = 'GLB: cargando...';
-  bool ready = false;
+  CameraController? camera;
+  String estado = 'iniciando...';
+
+  // Medicion de la tasa de render 3D: se cuenta en el callback de animacion,
+  // que es donde three_js dibuja cada frame.
+  int _frames = 0;
+  DateTime _desde = DateTime.now();
+  double fps = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCamera();
+  }
+
+  Future<void> _startCamera() async {
+    // El plugin `camera` pide el permiso al inicializar en Android, asi que no
+    // hace falta un gestor de permisos aparte en el spike.
+    final camaras = await availableCameras();
+    if (camaras.isEmpty) {
+      setState(() => estado = 'sin camaras disponibles');
+      return;
+    }
+    // Trasera: es la que usa la prueba de pulseras.
+    final trasera = camaras.firstWhere(
+      (c) => c.lensDirection == CameraLensDirection.back,
+      orElse: () => camaras.first,
+    );
+
+    final controller = CameraController(
+      trasera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+    await controller.initialize();
+    if (!mounted) return;
+    setState(() {
+      camera = controller;
+      estado = 'camara lista';
+    });
+  }
 
   void _createViewer(Size size) {
     threeJs = three.ThreeJS(
       size: size,
       settings: three.Settings(
-        // Las tres lineas que se estan probando.
         alpha: true,
         clearAlpha: 0.0,
         clearColor: 0x000000,
         antialias: true,
       ),
-      onSetupComplete: () => setState(() => ready = true),
+      onSetupComplete: () => setState(() => estado = 'render + camara activos'),
       setup: setup,
     );
     setState(() {});
@@ -60,6 +101,7 @@ class _SpikePageState extends State<SpikePage> {
   @override
   void dispose() {
     threeJs?.dispose();
+    camera?.dispose();
     super.dispose();
   }
 
@@ -72,7 +114,7 @@ class _SpikePageState extends State<SpikePage> {
       0.1,
       100,
     );
-    threeJs.camera.position.setValues(0, 0, 5);
+    threeJs.camera.position.setValues(0, 0, 4);
     threeJs.camera.lookAt(threeJs.scene.position);
 
     threeJs.scene.add(three.AmbientLight(0xffffff, 1.2));
@@ -80,76 +122,54 @@ class _SpikePageState extends State<SpikePage> {
     key.position.setValues(2, 4, 3);
     threeJs.scene.add(key);
 
-    // Geometria propia: no depende de cargar nada, asi que si el render
-    // funciona, esto se ve si o si. Es la prueba de la transparencia.
-    final knot = three.Mesh(
-      three.TorusKnotGeometry(0.8, 0.28, 128, 24),
-      three.MeshStandardMaterial.fromMap({
-        'color': 0xD4AF37,
-        'metalness': 0.9,
-        'roughness': 0.25,
-      }),
-    );
-    threeJs.scene.add(knot);
-
-    // Prueba aparte: que el loader acepte los GLB reales del catalogo.
-    // Se prueban todos para distinguir "este modelo trae algo raro" de "el
-    // loader no sirve para nuestros modelos".
-    const modelos = [
-      'collar-cadena-01.glb',
-      'cartier.glb',
-      'arete_perla.glb',
-      '_placeholder.glb',
-      'Collar1_Juanes.glb',
-      'Collar2_Juanes.glb',
-      'pulsera_perlas_basica.glb',
-    ];
-
-    final resultados = <String>[];
+    // Se usa un modelo del catalogo que sí carga (los que traen
+    // KHR_materials_specular con specularFactor entero fallan: ver README §3.2).
     three.Object3D? jewel;
-
-    for (final nombre in modelos) {
-      try {
-        final loader = three.GLTFLoader().setPath('assets/');
-        final gltf = await loader.fromAsset(nombre);
-        if (gltf == null) {
-          resultados.add('x $nombre: null');
-        } else {
-          resultados.add('OK $nombre');
-          jewel ??= gltf.scene;
-        }
-      } catch (e) {
-        final msg = e.toString();
-        resultados.add(
-          'x $nombre: ${msg.length > 42 ? '${msg.substring(0, 42)}...' : msg}',
-        );
+    try {
+      final loader = three.GLTFLoader().setPath('assets/');
+      final gltf = await loader.fromAsset('cartier.glb');
+      if (gltf != null) {
+        jewel = gltf.scene;
+        threeJs.scene.add(jewel);
       }
+    } catch (_) {
+      // Si falla el modelo, el spike sigue siendo valido: lo que se mide es la
+      // convivencia de render y camara, no la carga.
     }
-
-    if (jewel != null) {
-      jewel.position.setValues(0, -1.8, 0);
-      threeJs.scene.add(jewel);
-    }
-    setState(() => glbStatus = resultados.join('\n'));
 
     final model = jewel;
     threeJs.addAnimationEvent((dt) {
-      knot.rotation.y += dt * 0.8;
-      knot.rotation.x += dt * 0.3;
-      if (model != null) model.rotation.y += dt * 0.8;
+      if (model != null) model.rotation.y += dt * 0.7;
+
+      _frames++;
+      final transcurrido = DateTime.now().difference(_desde).inMilliseconds;
+      if (transcurrido >= 1000) {
+        final medido = _frames * 1000 / transcurrido;
+        _frames = 0;
+        _desde = DateTime.now();
+        if (mounted) setState(() => fps = medido);
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final controller = camera;
+
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // Fondo imposible de confundir: si se ve detras del 3D, hay
-          // transparencia.
-          Positioned.fill(
-            child: CustomPaint(painter: _StripesPainter()),
-          ),
+          if (controller != null && controller.value.isInitialized)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller.value.previewSize!.height,
+                height: controller.value.previewSize!.width,
+                child: CameraPreview(controller),
+              ),
+            ),
 
           Positioned.fill(
             child: LayoutBuilder(
@@ -173,16 +193,12 @@ class _SpikePageState extends State<SpikePage> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 24,
+            bottom: 28,
             child: Column(
               children: [
-                _Chip(ready ? 'render listo' : 'iniciando...'),
+                _Chip('render 3D: ${fps.toStringAsFixed(1)} FPS'),
                 const SizedBox(height: 8),
-                _Chip(glbStatus),
-                const SizedBox(height: 8),
-                const _Chip(
-                  'Si ves las franjas detras del objeto -> transparencia OK',
-                ),
+                _Chip(estado),
               ],
             ),
           ),
@@ -205,31 +221,8 @@ class _Chip extends StatelessWidget {
           child: Text(
             text,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
+            style: const TextStyle(color: Colors.white, fontSize: 15),
           ),
         ),
       );
-}
-
-class _StripesPainter extends CustomPainter {
-  static const _colors = [
-    Color(0xFFE53935),
-    Color(0xFF1E88E5),
-    Color(0xFF43A047),
-    Color(0xFFFDD835),
-  ];
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const bandHeight = 90.0;
-    final paint = Paint();
-    var i = 0;
-    for (var y = 0.0; y < size.height; y += bandHeight) {
-      paint.color = _colors[i++ % _colors.length];
-      canvas.drawRect(Rect.fromLTWH(0, y, size.width, bandHeight), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

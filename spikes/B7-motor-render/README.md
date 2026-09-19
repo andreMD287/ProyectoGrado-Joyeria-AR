@@ -3,7 +3,7 @@
 **Frente:** B — Spikes de investigación · **Prioridad:** Alta · **Alimenta:** ADR-16 (migración del render de la prueba virtual)
 **Tipo:** Técnica (prueba de concepto ejecutable en dispositivo) · **Estado:** Resuelto — motor validado · **Última actualización:** 2026-09-18
 
-> La prueba virtual se percibe como una calcomanía superpuesta y no como una joya puesta sobre el cuerpo. La causa está en el render: `model_viewer_plus` dibuja el modelo desde **su propia cámara** dentro de un WebView y el resultado se compone como un *sprite* 2D, sin relación de perspectiva con la extremidad real. Este spike verifica si `three_js` puede sustituirlo, y su pregunta decisiva es una sola: **¿puede renderizar con fondo transparente, de modo que la cámara se vea a través?** Si no, el motor no sirve y no vale la pena seguir.
+> **Resuelto: el motor sirve.** La prueba virtual se percibe como una calcomanía superpuesta y no como una joya puesta sobre el cuerpo. La causa está en el render: `model_viewer_plus` dibuja el modelo desde **su propia cámara** dentro de un WebView y el resultado se compone como un *sprite* 2D, sin relación de perspectiva con la extremidad real. Este spike verifica si `three_js` puede sustituirlo, y su pregunta decisiva es una sola: **¿puede renderizar con fondo transparente, de modo que la cámara se vea a través?** Si no, el motor no sirve y no vale la pena seguir.
 
 ---
 
@@ -44,6 +44,8 @@ Verificado en dispositivo físico (Galaxy A15, Android 15):
 | ¿Funciona con Flutter 3.41.7, la versión que fija el CI? | **Sí**, sin subir el SDK |
 | ¿Carga los GLB del catálogo? | **5 de 7** (ver §3) |
 | Calidad de imagen | PBR con *metalness*/*roughness*, reflejos especulares y antialiasing |
+| ¿Convive con el stream de cámara? | **Sí.** `CameraPreview` detrás y render encima, ambos visibles |
+| Tasa de render con la cámara corriendo | **56,6 FPS**, sostenidos también al mover la cámara |
 
 Que dibuje en un `Texture` y no en una *platform view* resuelve de paso un problema que arrastraba el WebView: su composición asíncrona hacía que la joya "nadara" respecto de la imagen de cámara.
 
@@ -81,7 +83,13 @@ No es un problema general de `int`/`double`: `Collar1_Juanes.glb` trae `transmis
 
 **Dos salidas:** parchear el cargador (`(… as num?)?.toDouble()`, una línea) o reexportar esas dos piezas con un valor no entero.
 
-### 3.3. Exige cadena de compilación nativa
+### 3.3. `permission_handler` 13+ no compila con este andamiaje
+
+Al añadir `permission_handler` al spike, pub resolvió la 13.0.2 (con `permission_handler_android` 14.1.0) y el build falló con errores de compilación del script Gradle (`kotlin { compilerOptions { … } }`, `srcDirs` obsoleto). La aplicación va en 11.4.0 / 12.1.0 y funciona. **Restricción a tener presente:** subir `permission_handler` romperá el build hasta que se actualice el andamiaje de Gradle/Kotlin.
+
+En el spike se quitó la dependencia: el plugin `camera` ya pide el permiso al inicializar en Android.
+
+### 3.4. Exige cadena de compilación nativa
 
 `three_js` depende de `flutter_angle`, que compila ANGLE con CMake y NDK. Sin la versión exacta el build falla con:
 
@@ -97,4 +105,6 @@ Se instala con `sdkmanager --install "cmake;3.31.4"`. **El CI tendrá que hacerl
 
 Adoptar `three_js` como motor de render de la prueba virtual. La justificación completa y las alternativas descartadas (`model_viewer_plus`, `flutter_scene`, Depth API de ARCore/ARKit) están en **ADR-16** del SDD, que es la fuente única de las decisiones de arquitectura.
 
-Lo que este spike **no** cubre y queda para la migración: alimentar la cámara virtual con la pose de la muñeca, añadir el *occluder* de la extremidad para la oclusión por profundidad, y medir el rendimiento con la cámara corriendo en simultáneo.
+La tasa medida deja margen de sobra: el presupuesto de detección es de ~10 FPS (ADR-12), así que el render no es el cuello de botella.
+
+Lo que este spike **no** cubre y queda para la migración: alimentar la cámara virtual con la pose de la muñeca y añadir el *occluder* de la extremidad para la oclusión por profundidad.

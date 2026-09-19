@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Modelos del catalogo: se copian desde ../../assets/models al reproducir
+# el spike (ver README). No se duplican en la historia del repositorio.
+assets/*.glb
