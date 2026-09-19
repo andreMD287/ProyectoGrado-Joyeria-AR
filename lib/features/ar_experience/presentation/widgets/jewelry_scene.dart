@@ -37,10 +37,18 @@ class JewelryScene extends StatefulWidget {
   /// lleva perpendicular al eje del antebrazo).
   final double rollOffset;
 
-  /// Tamaño aparente, en píxeles del área. Solo se usa cuando no hay
-  /// reconstrucción métrica; entonces la pieza se dimensiona a ojo, como hacía
-  /// el overlay anterior.
+  /// Diámetro **exterior** que debe aparentar la pieza, en píxeles del área.
   final double targetSizePx;
+
+  /// Diámetro del miembro que la pieza rodea, en píxeles del área. Es lo que
+  /// ocluye, y **no se deduce del modelo**: la caja envolvente no da el hueco
+  /// del aro. En una pieza de cuentas su dimensión más delgada es el grosor de
+  /// la cuenta, pero en un brazalete es el ancho de la banda a lo largo del
+  /// brazo, que no guarda relación con el radio interior. Se estima por
+  /// anatomía a partir de la medida que reporta la estrategia.
+  ///
+  /// `null` en piezas que no rodean nada (aretes): entonces no hay oclusión.
+  final double? limbDiameterPx;
 
 
   const JewelryScene({
@@ -49,6 +57,7 @@ class JewelryScene extends StatefulWidget {
     required this.anchor,
     required this.fit,
     required this.targetSizePx,
+    this.limbDiameterPx,
     this.staticYawDeg = 0,
     this.rollOffset = 0,
   });
@@ -89,9 +98,19 @@ class _JewelrySceneState extends State<JewelryScene> {
 
   three.Object3D? _jewel;
 
-  /// Diámetro del modelo: su mayor extensión. Para una pieza que rodea un
-  /// miembro es el diámetro del aro, que es lo que el catálogo mide en mm.
+  /// Cilindro que representa la extremidad. No se pinta: solo escribe
+  /// profundidad, de modo que el arco de la pieza que pasa por detrás queda
+  /// tapado por el propio buffer. Es la oclusión real, con silueta curva, en
+  /// lugar de un recorte plano sobre la imagen.
+  three.Object3D? _occluder;
+
+  /// Largo del cilindro en diámetros de hueco: basta con que sobresalga por
+  /// ambos lados para tapar en cualquier inclinación.
+  static const double _occluderLengthRatio = 3.0;
+
+  /// Diámetro exterior del modelo: su mayor extensión.
   double _modelDiameter = 1;
+
 
   /// Eje del aro en el espacio del modelo: la dirección **de menor extensión**.
   /// Una pieza que rodea un miembro es ancha en dos ejes y delgada en el
@@ -143,6 +162,15 @@ class _JewelrySceneState extends State<JewelryScene> {
     key.position.setValues(1, 2, 1);
     viewer.scene.add(key);
 
+    // Se dibuja antes que la joya (renderOrder menor) para que su profundidad
+    // ya esté en el buffer cuando se pinte la pieza.
+    final occluder = three.Mesh(
+      three.CylinderGeometry(0.5, 0.5, 1, 48),
+      three.MeshBasicMaterial.fromMap({'colorWrite': false}),
+    )..renderOrder = -1;
+    viewer.scene.add(occluder);
+    _occluder = occluder;
+
     final gltf = await three.GLTFLoader().fromBytes(widget.modelBytes);
     final model = gltf?.scene;
     if (model == null) return;
@@ -153,7 +181,11 @@ class _JewelrySceneState extends State<JewelryScene> {
     final size = bounds.max.clone()..sub(bounds.min);
     final center = bounds.getCenter(three.Vector3());
 
-    model.position.setValues(-center.x, -center.y, -center.z);
+    // Se **resta**, no se asigna: la caja viene en coordenadas de mundo, o sea
+    // que su centro ya incluye la traslacion que el modelo trae del exportador.
+    // Asignar `-centro` la descartaba, y la pieza quedaba desplazada de la
+    // muneca justo esa cantidad (visto en dispositivo: se iba hacia un lado).
+    model.position.sub(center);
     _modelDiameter = math.max(math.max(size.x, size.y), math.max(size.z, 1e-6));
     _ringAxisLocal = _menorExtension(size);
 
@@ -217,13 +249,53 @@ class _JewelrySceneState extends State<JewelryScene> {
     jewel.position.setValues(ndcX * halfWidth, ndcY * halfHeight, -_depth);
 
     // El tamaño se pide en píxeles y se traduce al ancho de mundo que ocupan a
-    // esta distancia. Se compara contra el diámetro del modelo —su mayor
-    // extensión— porque es lo que debe casar con el ancho de la muñeca.
+    // esta distancia.
     final targetWorld = widget.targetSizePx / area.width * (2 * halfWidth);
+
     final factor = targetWorld / _modelDiameter;
     jewel.scale.setValues(factor, factor, factor);
 
     _applyOrientation(jewel, anchor);
+
+    final limbPx = widget.limbDiameterPx;
+    _applyOccluder(
+      anchor,
+      jewel,
+      limbPx == null ? 0 : limbPx / area.width * (2 * halfWidth),
+    );
+  }
+
+  /// Sitúa el cilindro de oclusión sobre la extremidad.
+  ///
+  /// Solo se activa cuando hay eje 3D: sin él no se sabe hacia dónde va el
+  /// miembro, y un cilindro mal orientado taparía lo que no debe. Sin oclusión
+  /// la pieza se ve entera, que es el comportamiento anterior — peor, pero no
+  /// erróneo.
+  void _applyOccluder(
+    AnchorPose anchor,
+    three.Object3D jewel,
+    double limbDiameterWorld,
+  ) {
+    final occluder = _occluder;
+    final axis = anchor.axis3D;
+    if (occluder == null) return;
+
+    // Sin eje 3D no se sabe hacia donde va el miembro; sin hueco, la pieza no
+    // rodea nada y no hay nada que ocluir.
+    occluder.visible = axis != null && limbDiameterWorld > 0;
+    if (axis == null || limbDiameterWorld <= 0) return;
+
+    occluder.position.setFrom(jewel.position);
+
+    occluder.scale.setValues(
+      limbDiameterWorld,
+      limbDiameterWorld * _occluderLengthRatio,
+      limbDiameterWorld,
+    );
+
+    // El cilindro nace con su eje en +Y; se lleva al eje del antebrazo.
+    final destino = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
+    occluder.quaternion.setFromUnitVectors(three.Vector3(0, 1, 0), destino);
   }
 
   void _applyOrientation(three.Object3D jewel, AnchorPose anchor) {
@@ -239,16 +311,58 @@ class _JewelrySceneState extends State<JewelryScene> {
 
     // El eje llega en el marco del detector (y hacia abajo, z alejándose) y la
     // escena usa el de la cámara (y hacia arriba, z hacia el espectador).
-    final destino = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
+    final n = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
 
-    // Se alinea el eje del aro con el del antebrazo, y luego se gira la pieza
-    // sobre ese mismo eje para colocar el detalle (dije, broche) donde va.
-    final alinear = three.Quaternion()
-      ..setFromUnitVectors(_ringAxisLocal, destino);
-    final girar = three.Quaternion()
-      ..setFromAxisAngle(_ringAxisLocal, widget.staticYawDeg * math.pi / 180);
+    // Primero se alinea el eje del aro con el del antebrazo. Queda libre el
+    // giro **alrededor** de ese eje, que es el que decide qué parte de la
+    // pieza mira al usuario.
+    final alinear = three.Quaternion()..setFromUnitVectors(_ringAxisLocal, n);
 
-    jewel.quaternion.setFrom(alinear..multiply(girar));
+    // Ese giro libre se ata al **dorso de la mano**, no a la cámara. Atarlo a
+    // la cámara mantiene el detalle siempre de frente, pero entonces la pieza
+    // contrarrota al girar la muñeca y parece congelada, perdiendo justo la
+    // señal de que está puesta en el brazo (visto en dispositivo). Siguiendo la
+    // palma, la pieza gira con la muñeca y el detalle queda arriba con la palma
+    // apoyada, que es la pose natural.
+    final refWorld = _perpendicularTo(_ringAxisLocal)..applyQuaternion(alinear);
+
+    final palma = anchor.palmNormal3D;
+    final referencia = palma == null
+        // Sin normal de palma se recurre a la cámara: peor, pero deja el
+        // detalle visible en vez de escondido.
+        ? three.Vector3(0, 0, 1)
+        // Signo invertido: se apunta al **dorso** de la mano, no a la palma.
+        // Es el lado que queda arriba con la palma apoyada en la mesa, que es
+        // como se lleva una pulsera y como el usuario espera ver el detalle.
+        : (three.Vector3(-palma.x, palma.y, palma.z)..normalize());
+
+    // Solo interesa su componente dentro del plano del aro.
+    final proyeccion = n.clone()..scale(referencia.dot(n));
+    final destino = referencia.clone()..sub(proyeccion);
+
+    var giroRadianes = widget.staticYawDeg * math.pi / 180;
+    if (destino.length > 1e-6) {
+      destino.normalize();
+      // Ángulo con signo de `refWorld` a `destino`, medido alrededor de `n`.
+      final cos = destino.dot(refWorld).clamp(-1.0, 1.0);
+      final sin = (refWorld.clone()..cross(destino)).dot(n);
+      giroRadianes += math.atan2(sin, cos);
+    }
+
+    // El giro es alrededor de un eje ya en coordenadas de mundo, así que se
+    // aplica después de la alineación.
+    final girar = three.Quaternion()..setFromAxisAngle(n, giroRadianes);
+    jewel.quaternion.setFrom(girar..multiply(alinear));
+  }
+
+  /// Un unitario cualquiera perpendicular a [v]. Sirve de referencia para
+  /// medir el giro alrededor del eje del aro; cuál de todos los
+  /// perpendiculares sea da igual, porque el desfase hasta el detalle de la
+  /// pieza lo aporta `orientacion_yaw_deg` del catálogo.
+  static three.Vector3 _perpendicularTo(three.Vector3 v) {
+    final auxiliar =
+        v.x.abs() < 0.9 ? three.Vector3(1, 0, 0) : three.Vector3(0, 1, 0);
+    return (auxiliar..cross(v)).normalize();
   }
 
   @override

@@ -436,9 +436,12 @@ void main() {
       expect(anchor.axis3D!.x, closeTo(0, 1e-9));
     });
 
-    test('recoge la profundidad, que es lo que la imagen no puede dar', () {
+    test('recoge la profundidad, pero amortiguada', () {
       // Misma proyeccion en la imagen, distinta inclinacion real: es el caso
-      // que la heuristica 2D no distingue y esta si.
+      // que la heuristica 2D no distingue y esta si. La profundidad se refleja,
+      // pero atenuada a proposito: medida en dispositivo es la componente con
+      // diez veces mas ruido que las otras, y tomarla cruda hacia temblar la
+      // pieza (ver _depthDamping).
       final plano = strategy.computeAnchor(
         hand(
           wrist: (0.5, 0.6),
@@ -458,7 +461,87 @@ void main() {
       )!;
 
       expect(plano.axis3D!.z, closeTo(0, 1e-9));
-      expect(inclinado.axis3D!.z, greaterThan(0.5));
+      // Sin amortiguar, un antebrazo a 45 grados daria z ~0,71.
+      expect(inclinado.axis3D!.z, greaterThan(0.1));
+      expect(inclinado.axis3D!.z, lessThan(0.4));
+      // La direccion en el plano de la imagen sigue dominando, que es la que
+      // el detector si resuelve bien.
+      expect(inclinado.axis3D!.y, greaterThan(inclinado.axis3D!.z * 2));
+    });
+  });
+
+  group('tamano de la pieza', () {
+    // Mano metrica de referencia, en metros: 9 cm de la muneca al plano de los
+    // nudillos y 4 cm entre ellos.
+    const wristW = Vec3(0, 0.09, 0);
+    const indexW = Vec3(-0.02, 0, 0);
+    const pinkyW = Vec3(0.02, 0, 0);
+
+    /// Proyecta una mano metrica a la imagen con una escala conocida. Es lo que
+    /// hace la camara, y es lo que el algoritmo tiene que recuperar: si los
+    /// landmarks de imagen y los metricos no describen la misma mano, la
+    /// prueba mide una incoherencia inventada y no el comportamiento real.
+    LandmarkFrame proyectar(
+      Vec3 w,
+      Vec3 i,
+      Vec3 p, {
+      required double escala,
+    }) {
+      (double, double) img(Vec3 v) => (0.5 + v.x * escala, 0.5 + v.y * escala);
+      return hand(
+        wrist: img(w),
+        indexMcp: img(i),
+        pinkyMcp: img(p),
+        world: (wrist: w, indexMcp: i, pinkyMcp: p),
+      );
+    }
+
+    test('el tamano sale del ancho de palma medido en la imagen', () {
+      final anchor = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 2.0),
+      )!;
+
+      // 4 cm de palma proyectados con escala 2.0.
+      expect(anchor.scale, closeTo(0.04 * 2.0, 1e-9));
+    });
+
+    test('el tamano sigue al escorzo, y eso se acepta a conciencia', () {
+      // Con la mano pronada 60 grados la palma se ve la mitad de ancha, y la
+      // pieza encoge en consecuencia.
+      //
+      // Se intento evitarlo con la reconstruccion metrica —primero por escala
+      // absoluta, luego por proporciones— y las dos veces salio peor: medido en
+      // dispositivo, el ancho metrico de la palma varia un 65% entre palma
+      // arriba y palma abajo, cuando es una distancia 3D que no puede cambiar.
+      // En esas mismas muestras el ancho en imagen solo variaba un 4%, porque
+      // en ambas poses el plano de la palma queda casi paralelo a la camara.
+      //
+      // Asi que se prefiere la senal estable aunque no sea invariante: encoge
+      // en poses de canto, que son ademas las que menos se usan para probarse
+      // una pulsera.
+      const cos60 = 0.5;
+      const sin60 = 0.8660254037844387;
+      Vec3 girar(Vec3 v) => Vec3(v.x * cos60, v.y, -v.x * sin60);
+
+      final frontal = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 2.0),
+      )!;
+      final girada = BraceletStrategy().computeAnchor(
+        proyectar(wristW, girar(indexW), girar(pinkyW), escala: 2.0),
+      )!;
+
+      expect(girada.scale!, closeTo(frontal.scale! * cos60, 1e-6));
+    });
+
+    test('la pieza cambia de tamano con la distancia', () {
+      final lejos = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 1.5),
+      )!;
+      final cerca = BraceletStrategy().computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 3.0),
+      )!;
+
+      expect(cerca.scale!, closeTo(lejos.scale! * 2, 1e-6));
     });
   });
 

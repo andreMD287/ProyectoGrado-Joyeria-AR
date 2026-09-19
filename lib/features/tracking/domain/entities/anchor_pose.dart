@@ -47,6 +47,16 @@ class AnchorPose {
   /// `null` cuando el detector no entrega reconstrucción métrica.
   final Vec3? axis3D;
 
+  /// Normal del plano de la palma, unitaria, en el mismo espacio que [axis3D].
+  ///
+  /// Da el giro de la muñeca **alrededor** de su propio eje, que es el grado de
+  /// libertad que [axis3D] deja suelto: con el eje se sabe hacia dónde va el
+  /// antebrazo, pero no si la palma mira arriba o abajo. El render lo usa para
+  /// que la pieza gire con la muñeca en vez de quedarse fija.
+  ///
+  /// `null` cuando el detector no entrega reconstrucción métrica.
+  final Vec3? palmNormal3D;
+
   /// Medida real, **en metros**, de la misma distancia anatómica que [scale]
   /// reporta en fracciones del ancho del frame.
   ///
@@ -66,6 +76,7 @@ class AnchorPose {
     this.scale,
     this.yawRadians,
     this.axis3D,
+    this.palmNormal3D,
     this.metricWidth,
     this.confidence = 1,
   });

@@ -77,6 +77,10 @@ class BraceletStrategy implements TrackingStrategy {
     this.minPalmWidth = 0.04,
   });
 
+  /// Cuanto se conserva de la componente de profundidad del eje. Ver
+  /// [_fromWorldLandmarks]: es la senal menos fiable del detector.
+  static const double _depthDamping = 0.25;
+
   @override
   JewelryCategory get category => JewelryCategory.bracelet;
 
@@ -151,8 +155,10 @@ class BraceletStrategy implements TrackingStrategy {
       wrist.z + axisZ * forearmOffset,
     );
 
+    final metrico = _fromWorldLandmarks(frame.worldLandmarks);
+
     // El yaw se calcula antes que el tamano: actualiza _maxWidthToAxisRatio,
-    // que el tamano estable de abajo tambien usa.
+    // del que el tamano estable depende cuando no hay datos metricos.
     final yawRadians = _estimateYaw(
       landmarks: landmarks,
       palmX: palmX,
@@ -171,11 +177,33 @@ class BraceletStrategy implements TrackingStrategy {
     // reconstruye el ancho "de frente" con el largo de antebrazo actual (que
     // no cambia con este giro) y la relacion mas ancha vista en la sesion —
     // eso sigue la distancia a la camara sin heredar el encogimiento del yaw.
-    final stableWidth = _maxWidthToAxisRatio > 0
-        ? axisLength * _maxWidthToAxisRatio
-        : palmWidth;
-
-    final metrico = _fromWorldLandmarks(frame.worldLandmarks);
+    // Ancho de la palma "de frente", que es lo que fija el tamano de la pieza.
+    //
+    // Se obtiene multiplicando el largo del antebrazo **en la imagen** por la
+    // proporcion anatomica medida en 3D. Funciona porque ninguno de los dos se
+    // escorza al girar la muneca: el largo del antebrazo es el propio eje de
+    // giro, y la proporcion es un cociente de distancias reales.
+    //
+    // Antes esa proporcion se calibraba con el **maximo visto en la sesion**,
+    // y ese heuristico se descalibraba en cuanto cambiaba el angulo de camara:
+    // la pieza cambiaba de tamano y de sitio al mover el telefono, que es el
+    // problema reportado en dispositivo. Sin datos metricos se cae a el.
+    // Tamano aparente de la pieza: se mide **sobre la imagen**, que es la unica
+    // senal estable.
+    //
+    // Se intento derivarlo de la reconstruccion metrica, primero por escala
+    // absoluta y despues por proporciones, y las dos veces salio peor. Medido
+    // en dispositivo (2026-09-19, 302 muestras en dos poses): el ancho metrico
+    // de la palma pasa de 7,3 cm con la palma hacia arriba a 4,4 cm con la
+    // palma hacia abajo, un 65% de diferencia en una distancia 3D que es una
+    // propiedad fisica de la mano y no puede cambiar. MediaPipe reconstruye mal
+    // la pose pronada. En esas mismas muestras el ancho en imagen solo varia un
+    // 4%.
+    //
+    // La regla que deja esto, y que ya se habia insinuado con la profundidad:
+    // de la reconstruccion metrica sirven **las direcciones**, no las
+    // distancias — ni absolutas ni en cociente.
+    final stableWidth = palmWidth;
 
     return AnchorPose(
       position: position,
@@ -183,6 +211,7 @@ class BraceletStrategy implements TrackingStrategy {
       scale: stableWidth,
       yawRadians: yawRadians,
       axis3D: metrico?.axis,
+      palmNormal3D: metrico?.normal,
       metricWidth: metrico?.palmWidth,
       confidence: wrist.visibility ?? 1.0,
     );
@@ -199,7 +228,10 @@ class BraceletStrategy implements TrackingStrategy {
   ///
   /// Devuelve `null` si el detector no entrega puntos métricos (hoy, todo lo
   /// que no sea MediaPipe manos en Android).
-  ({Vec3 axis, double palmWidth})? _fromWorldLandmarks(List<Vec3> world) {
+  ({Vec3 axis, Vec3 normal, double palmWidth, double widthToAxis})?
+      _fromWorldLandmarks(
+    List<Vec3> world,
+  ) {
     if (world.length <= pinkyMcpLandmark) return null;
 
     final wrist = world[wristLandmark];
@@ -229,9 +261,50 @@ class BraceletStrategy implements TrackingStrategy {
     );
     if (ancho <= 0) return null;
 
+    // La profundidad se amortigua antes de normalizar. Medido en dispositivo
+    // con el brazo inmovil (2026-09-18, 110 muestras): la `z` del eje tiene
+    // desviacion 0,228 y recorre un rango de 0,89 —practicamente todo el que
+    // puede—, mientras que la `y` se queda en 0,048. El eje entero oscilaba
+    // 11 grados de media y hasta 33, y eso se ve como temblor de la pieza.
+    //
+    // No se arregla filtrando: el ruido no es de alta frecuencia sino deriva
+    // lenta entre interpretaciones de profundidad igual de plausibles para el
+    // detector, y un pasa-bajos solo le quito un 17%. Amortiguarla conserva la
+    // direccion en el plano de la imagen, que si es fiable, y deja una
+    // inclinacion fuera de plano modesta pero estable.
+    final z = axis.z / largo * _depthDamping;
+    final x = axis.x / largo;
+    final y = axis.y / largo;
+    final renorm = math.sqrt(x * x + y * y + z * z);
+
+    // Normal del plano de la palma: perpendicular a los dos vectores que van
+    // de la muñeca a cada nudillo. Es lo que dice si la palma mira arriba o
+    // abajo, que el eje del antebrazo por si solo no distingue.
+    final v1 = Vec3(
+      indexMcp.x - wrist.x,
+      indexMcp.y - wrist.y,
+      indexMcp.z - wrist.z,
+    );
+    final v2 = Vec3(
+      pinkyMcp.x - wrist.x,
+      pinkyMcp.y - wrist.y,
+      pinkyMcp.z - wrist.z,
+    );
+    final nx = v1.y * v2.z - v1.z * v2.y;
+    final ny = v1.z * v2.x - v1.x * v2.z;
+    final nz = v1.x * v2.y - v1.y * v2.x;
+    final nLargo = math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (nLargo <= 0) return null;
+
     return (
-      axis: Vec3(axis.x / largo, axis.y / largo, axis.z / largo),
+      axis: Vec3(x / renorm, y / renorm, z / renorm),
+      normal: Vec3(nx / nLargo, ny / nLargo, nz / nLargo),
       palmWidth: ancho,
+      // Proporcion anatomica del usuario, medida entre dos distancias reales:
+      // no se escorza, porque un cociente de distancias 3D no depende de como
+      // se mire la mano. Es lo unico de la reconstruccion metrica que se puede
+      // usar con confianza, igual que las direcciones.
+      widthToAxis: ancho / largo,
     );
   }
 

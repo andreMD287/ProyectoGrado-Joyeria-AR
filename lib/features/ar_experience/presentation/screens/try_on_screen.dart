@@ -927,14 +927,33 @@ class _ModelOverlay extends ConsumerWidget {
   /// estrategia. Para pulseras, multiplos del ancho de la palma: una pulsera
   /// es algo mas estrecha que la palma pero se ve mas ancha por el grosor.
   /// Constante a calibrar en dispositivo.
-  /// Calibrado contra el ancho de la muneca: `scale` reporta el ancho de la
-  /// palma, y la muneca es bastante mas estrecha. Antes valia 1.15 porque el
-  /// overlay 2D dibujaba el modelo dentro de una caja con aire alrededor;
-  /// ahora el diametro del aro ocupa esa medida completa.
+  /// Ancho del antebrazo, donde se apoya la pieza, como fraccion del ancho de
+  /// palma que reporta `scale`.
+  ///
+  /// Calibrado midiendo sobre captura con el cilindro de oclusion pintado: con
+  /// 0.85 media 220 px contra 240 px de brazo real, un 8% corto, y por ese
+  /// margen se escapaba parte del arco trasero de la pieza.
+  static const double _wristToPalm = 0.92;
+
+  /// Diametro exterior de la pieza respecto al del miembro: una pulsera queda
+  /// algo holgada y ademas tiene grosor propio.
+  static const double _jewelToLimb = 1.1;
+
+  /// Tamano exterior de la pieza como multiplo de la medida que reporta la
+  /// estrategia.
   double get _scaleFactor => switch (piece.categoria) {
-        JewelryCategory.bracelet => 0.8,
+        JewelryCategory.bracelet => _wristToPalm * _jewelToLimb,
         _ => 1.0,
       };
+
+  /// Diametro del miembro que la pieza rodea, en pixeles, para el occluder.
+  /// Solo las pulseras rodean algo hoy; un arete cuelga del lobulo.
+  double? _limbDiameterPx(PreviewFit fit, double? scale) {
+    if (piece.categoria != JewelryCategory.bracelet || scale == null) {
+      return null;
+    }
+    return fit.lengthOf(scale) * _wristToPalm;
+  }
 
   /// Rotacion extra sobre el angulo que reporta la estrategia.
   ///
@@ -973,6 +992,7 @@ class _ModelOverlay extends ConsumerWidget {
           anchor: anchor,
           fit: fit,
           targetSizePx: size,
+          limbDiameterPx: _limbDiameterPx(fit, scale),
           staticYawDeg: piece.orientacionYawDeg,
           rollOffset: _rollOffset,
         ),
