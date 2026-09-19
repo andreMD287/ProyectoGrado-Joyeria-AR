@@ -21,7 +21,12 @@ dependencies:
 
   # ── Realidad aumentada y visor 3D (stack validado) ──
   ar_flutter_plugin_2: ^0.0.3       # ARCore (Android) / ARKit (iOS)
-  model_viewer_plus: ^1.10.0        # Visor GLB con PBR (WebView)
+  # Motor de render de la prueba virtual (ADR-16). Sustituye a
+  # `model_viewer_plus`: camara en perspectiva propia y buffer de
+  # profundidad, que es lo que permite que la joya no se vea superpuesta.
+  # Exige CMake 3.31.4 en el SDK de Android (ver el workflow de CI).
+  three_js: ^0.3.0
+  model_viewer_plus: ^1.10.0        # Visor GLB con PBR (WebView) — en retirada, aun lo usa la pantalla de detalle
   webview_flutter: ^4.14.0          # Puente JS al <model-viewer> para orientacion en vivo
 
   # ── Detección de landmarks ──

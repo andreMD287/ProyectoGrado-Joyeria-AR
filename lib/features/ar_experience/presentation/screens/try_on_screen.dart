@@ -5,8 +5,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:model_viewer_plus/model_viewer_plus.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../../core/assets/resolved_model_asset.dart';
 import '../../../../core/di/providers.dart';
@@ -18,6 +16,7 @@ import '../../../tracking/domain/entities/anchor_pose.dart';
 import '../../../tracking/domain/entities/landmark.dart';
 import '../../../tracking/domain/strategies/bracelet_strategy.dart';
 import '../controllers/try_on_controller.dart';
+import '../widgets/jewelry_scene.dart';
 
 class TryOnScreen extends ConsumerWidget {
   final String pieceId;
@@ -797,12 +796,11 @@ class _CameraOverlay extends ConsumerWidget {
 
                 if (!showDebug) const _CameraGuide(),
 
-                if (anchor != null)
-                  _ModelOverlay(
-                    piece: piece,
-                    anchor: anchor!,
-                    fit: fit,
-                  ),
+                _ModelOverlay(
+                  piece: piece,
+                  anchor: anchor,
+                  fit: fit,
+                ),
 
                 if (showDebug)
                   _LandmarkDebugLayer(
@@ -908,7 +906,7 @@ class _CameraGuidePainter extends CustomPainter {
 
 class _ModelOverlay extends ConsumerWidget {
   final JewelryPiece piece;
-  final AnchorPose anchor;
+  final AnchorPose? anchor;
   final PreviewFit fit;
 
   const _ModelOverlay({
@@ -951,154 +949,30 @@ class _ModelOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final modelAsset = ref.watch(
-      resolvedModelAssetProvider(
-        piece.modeloGlb,
-      ),
-    );
+    final model = ref.watch(modelBytesProvider(piece.modeloGlb));
 
-    final scale = anchor.scale;
+    final scale = anchor?.scale;
     final size = scale == null
         ? _fallbackSize
         : (fit.lengthOf(scale) * _scaleFactor).clamp(_minSize, _maxSize);
 
-    // El punto de anclaje se convierte con la misma transformacion `cover` que
-    // usa la vista previa; multiplicar por el tamano del area desplazaba la
-    // joya hacia los bordes del eje recortado.
-    final centerX = fit.xOf(anchor.position.x);
-    final centerY = fit.yOf(anchor.position.y);
-
-    return Stack(
-      children: [
-        Positioned(
-          left: centerX - size / 2,
-          top: centerY - size / 2,
-          width: size,
-          height: size,
-          child: modelAsset.when(
-            loading: () =>
-                const SizedBox.shrink(),
-            error: (_, _) =>
-                const SizedBox.shrink(),
-            data: (src) => IgnorePointer(
-              child: Transform.rotate(
-                angle: anchor.rollRadians + _rollOffset,
-                child: _LiveOrientationModelViewer(
-                  // El tamano NO entra en la key: con escala dinamica cambia
-                  // en cada frame y recrearia el WebView del visor entero.
-                  key: ValueKey(
-                    'model-${piece.categoria.id}-${piece.id}',
-                  ),
-                  elementId: 'mv-${piece.id}',
-                  src: src,
-                  staticYawDeg: piece.orientacionYawDeg,
-                  liveYawRadians: anchor.yawRadians,
-                ),
-              ),
-            ),
-          ),
+    return model.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      // La escena cubre toda el area de camara, no una caja alrededor del
+      // ancla: la joya se situa **dentro** de la escena (ADR-16).
+      data: (bytes) => Positioned.fill(
+        child: JewelryScene(
+          // El modelo no entra en la key: cambiarlo recrearia el contexto GL.
+          key: ValueKey('scene-${piece.categoria.id}'),
+          modelBytes: bytes,
+          anchor: anchor,
+          fit: fit,
+          targetSizePx: size,
+          staticYawDeg: piece.orientacionYawDeg,
+          rollOffset: _rollOffset,
         ),
-      ],
-    );
-  }
-}
-
-/// Envuelve `ModelViewer` para poder rotar el modelo 3D **en vivo** (yaw de
-/// pulseras), sin recrear el WebView en cada frame.
-///
-/// `model_viewer_plus` arma su HTML una sola vez en `initState`: cambiar el
-/// prop `orientation` en un rebuild de Flutter no hace nada despues del
-/// primer build (investigado para el spike de rotacion 3D). La unica forma
-/// de actualizarlo es tomar el `WebViewController` (via `onWebViewCreated`)
-/// y ejecutar JS directamente sobre el elemento (`id`) del `<model-viewer>`.
-///
-/// Como este widget mantiene la misma `key` entre frames (ver `_ModelOverlay`),
-/// su `State` sobrevive a cada nuevo `AnchorPose` y `didUpdateWidget` es el
-/// punto donde se aplica el yaw mas reciente.
-class _LiveOrientationModelViewer extends StatefulWidget {
-  final String elementId;
-  final String src;
-  final double staticYawDeg;
-  final double? liveYawRadians;
-
-  const _LiveOrientationModelViewer({
-    super.key,
-    required this.elementId,
-    required this.src,
-    required this.staticYawDeg,
-    required this.liveYawRadians,
-  });
-
-  @override
-  State<_LiveOrientationModelViewer> createState() =>
-      _LiveOrientationModelViewerState();
-}
-
-class _LiveOrientationModelViewerState
-    extends State<_LiveOrientationModelViewer> {
-  WebViewController? _controller;
-  double? _lastAppliedYawDeg;
-
-  @override
-  void didUpdateWidget(covariant _LiveOrientationModelViewer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _applyYawIfNeeded();
-  }
-
-  /// Empuja el yaw actual al elemento vivo, si cambio lo suficiente como para
-  /// notarse (evita saturar el puente JS con actualizaciones de fraccion de
-  /// grado en cada frame de tracking).
-  void _applyYawIfNeeded() {
-    final controller = _controller;
-    final liveYawRadians = widget.liveYawRadians;
-    if (controller == null || liveYawRadians == null) return;
-
-    final totalYawDeg =
-        widget.staticYawDeg + liveYawRadians * 180 / math.pi;
-    if (_lastAppliedYawDeg != null &&
-        (totalYawDeg - _lastAppliedYawDeg!).abs() < 1.0) {
-      return;
-    }
-    _lastAppliedYawDeg = totalYawDeg;
-
-    final yawStr = totalYawDeg.toStringAsFixed(1);
-    // Diagnostico temporal: confirma si el elemento se encuentra y que valor
-    // queda puesto, para separar "el calculo del yaw esta mal" de "el yaw se
-    // calcula bien pero no se refleja en el visor".
-    unawaited(
-      controller.runJavaScriptReturningResult(
-        "(function(){"
-        "var el = document.getElementById('${widget.elementId}');"
-        "if (!el) return 'no-element';"
-        "el.orientation = '0deg 0deg ${yawStr}deg';"
-        "return el.orientation;"
-        "})();",
-      ).then((result) {
-        debugPrint('[yaw] enviado ${yawStr}deg -> elemento devolvio: $result');
-      }).catchError((Object e) {
-        debugPrint('[yaw] error ejecutando JS: $e');
-      }),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final staticYawStr = widget.staticYawDeg.toStringAsFixed(1);
-    return ModelViewer(
-      key: ValueKey('${widget.elementId}-viewer'),
-      id: widget.elementId,
-      src: widget.src,
-      orientation: '0deg 0deg ${staticYawStr}deg',
-      onWebViewCreated: (controller) {
-        _controller = controller;
-        _applyYawIfNeeded();
-      },
-      backgroundColor: Colors.transparent,
-      cameraControls: false,
-      disableZoom: true,
-      disablePan: true,
-      disableTap: true,
-      autoRotate: false,
+      ),
     );
   }
 }
