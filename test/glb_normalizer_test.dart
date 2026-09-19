@@ -170,16 +170,30 @@ void main() {
   });
 
   group('modelos reales del catalogo', () {
-    // Los GLB viven en assets/models. Si faltan (checkout sin LFS) la prueba se
-    // salta en vez de fallar: no es el codigo lo que estaria roto.
     final dir = Directory('assets/models');
+
+    /// Lee un GLB del catalogo, o `null` si no hay archivo real que leer.
+    ///
+    /// El CI hace checkout **sin LFS a proposito**, para no agotar la cuota, de
+    /// modo que alli estos archivos son punteros de texto de ~132 bytes y no
+    /// modelos. Se detecta por los bytes magicos y se salta: lo que estaria
+    /// roto seria el entorno, no el normalizador, y el resto de este archivo ya
+    /// lo cubre con GLB sinteticos que si viajan con el repositorio.
+    Uint8List? leerGlb(String nombre) {
+      final file = File('${dir.path}/$nombre');
+      if (!file.existsSync()) return null;
+      final bytes = file.readAsBytesSync();
+      if (bytes.length < 12) return null;
+      final magic = ByteData.sublistView(bytes).getUint32(0, Endian.little);
+      return magic == 0x46546C67 ? bytes : null;
+    }
 
     test('las dos piezas que rompian al cargador quedan corregidas', () {
       for (final nombre in ['arete_perla.glb', 'pulsera_perlas_basica.glb']) {
-        final file = File('${dir.path}/$nombre');
-        if (!file.existsSync()) continue;
+        final bytes = leerGlb(nombre);
+        if (bytes == null) continue;
 
-        final salida = normalizeGlbForLoader(file.readAsBytesSync());
+        final salida = normalizeGlbForLoader(bytes);
         final json = readJson(salida);
 
         for (final material in (json['materials'] as List? ?? [])) {
@@ -195,10 +209,9 @@ void main() {
 
     test('los modelos que ya cargaban no se corrompen', () {
       for (final nombre in ['cartier.glb', 'collar-cadena-01.glb']) {
-        final file = File('${dir.path}/$nombre');
-        if (!file.existsSync()) continue;
+        final original = leerGlb(nombre);
+        if (original == null) continue;
 
-        final original = file.readAsBytesSync();
         final salida = normalizeGlbForLoader(original);
 
         final total = ByteData.sublistView(salida).getUint32(8, Endian.little);
