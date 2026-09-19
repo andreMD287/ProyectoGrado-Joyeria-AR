@@ -1,19 +1,24 @@
-// Spike B7 — motor de render 3D para la prueba virtual.
+// Spike B8 — ¿sirve la segmentación para medir el brazo?
 //
-// Primera parte (resuelta): ¿puede `three_js` renderizar con fondo
-// transparente, de modo que lo que esté detrás se vea a través? Sí.
+// El anclaje actual no mide el brazo: lo deduce de la mano. MediaPipe Hands
+// solo ve 21 puntos de la mano, y el último es la muñeca, así que la posición
+// de la pieza, el ancho del miembro y su eje son extrapolaciones a partir de
+// la palma. Por eso todo varía con el escorzo cuando cambia el ángulo de la
+// cámara, que es lo que se observa en dispositivo.
 //
-// Segunda parte (esta): ¿pueden convivir el render 3D y el stream de cámara a
-// una tasa usable en el dispositivo objetivo? Es el riesgo que decide si la
-// migración del render es viable, porque el presupuesto por frame ya está
-// ajustado (ver ADR-12: detección a ~10 FPS).
+// La segmentación mediría la silueta real. Pero el modelo de ML Kit está
+// entrenado para **selfies**: persona de frente, cámara frontal. Aquí se le va
+// a dar un brazo sobre un escritorio visto por la cámara trasera, que es un
+// caso muy distinto. La pregunta que decide si vale la pena seguir es una
+// sola: **¿segmenta el brazo?**
 //
-// El fondo ya no son franjas sino la cámara real: además de medir, es la
-// primera vista de cómo se verá la joya con el motor nuevo.
+// Se pinta la máscara en verde sobre la imagen. O cubre el brazo, o no.
+
+import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:three_js/three_js.dart' as three;
+import 'package:google_mlkit_selfie_segmentation/google_mlkit_selfie_segmentation.dart';
 
 void main() => runApp(const SpikeApp());
 
@@ -35,121 +40,114 @@ class SpikePage extends StatefulWidget {
 }
 
 class _SpikePageState extends State<SpikePage> {
-  // Se crea tarde, no en initState: `ThreeJS` lee MediaQuery en su primer
-  // build y **cachea** ese tamano para siempre. En arranque en frio ese primer
-  // build ocurre antes de que lleguen las medidas de la ventana, el tamano
-  // queda en 0x0 y crear la textura falla con "Invalid dimensions".
-  three.ThreeJS? threeJs;
-
   CameraController? camera;
-  String estado = 'iniciando...';
+  final _segmenter = SelfieSegmenter(mode: SegmenterMode.stream);
 
-  // Medicion de la tasa de render 3D: se cuenta en el callback de animacion,
-  // que es donde three_js dibuja cada frame.
+  SegmentationMask? _mask;
+  String estado = 'iniciando...';
+  int _sensorOrientation = 0;
+
+  bool _ocupado = false;
   int _frames = 0;
   DateTime _desde = DateTime.now();
-  double fps = 0;
+  double hz = 0;
+
+  /// Umbral de confianza para considerar un pixel parte del sujeto.
+  static const double _umbral = 0.5;
 
   @override
   void initState() {
     super.initState();
-    _startCamera();
+    _start();
   }
 
-  Future<void> _startCamera() async {
-    // El plugin `camera` pide el permiso al inicializar en Android, asi que no
-    // hace falta un gestor de permisos aparte en el spike.
+  Future<void> _start() async {
     final camaras = await availableCameras();
     if (camaras.isEmpty) {
-      setState(() => estado = 'sin camaras disponibles');
+      setState(() => estado = 'sin camaras');
       return;
     }
-    // Trasera: es la que usa la prueba de pulseras.
+    // Trasera: es la que usa la prueba de pulseras, y el caso dificil para un
+    // modelo pensado para selfies.
     final trasera = camaras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.back,
       orElse: () => camaras.first,
     );
+    _sensorOrientation = trasera.sensorOrientation;
 
     final controller = CameraController(
       trasera,
       ResolutionPreset.medium,
       enableAudio: false,
+      // ML Kit necesita un solo plano.
+      imageFormatGroup: ImageFormatGroup.nv21,
     );
     await controller.initialize();
     if (!mounted) return;
+
+    await controller.startImageStream(_onFrame);
     setState(() {
       camera = controller;
       estado = 'camara lista';
     });
   }
 
-  void _createViewer(Size size) {
-    threeJs = three.ThreeJS(
-      size: size,
-      settings: three.Settings(
-        alpha: true,
-        clearAlpha: 0.0,
-        clearColor: 0x000000,
-        antialias: true,
+  Future<void> _onFrame(CameraImage frame) async {
+    if (_ocupado) return;
+    _ocupado = true;
+    try {
+      final input = _toInputImage(frame);
+      if (input == null) return;
+
+      final mask = await _segmenter.processImage(input);
+
+      _frames++;
+      final ms = DateTime.now().difference(_desde).inMilliseconds;
+      if (ms >= 1000) {
+        hz = _frames * 1000 / ms;
+        _frames = 0;
+        _desde = DateTime.now();
+      }
+
+      if (mounted) {
+        setState(() {
+          _mask = mask;
+          estado = mask == null
+              ? 'sin mascara'
+              : 'mascara ${mask.width}x${mask.height} · ${hz.toStringAsFixed(1)} Hz';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => estado = 'error: $e');
+    } finally {
+      _ocupado = false;
+    }
+  }
+
+  InputImage? _toInputImage(CameraImage image) {
+    final rotation =
+        InputImageRotationValue.fromRawValue(_sensorOrientation) ??
+            InputImageRotation.rotation0deg;
+    final format = InputImageFormatValue.fromRawValue(image.format.raw);
+    if (format == null || image.planes.length != 1) return null;
+    final plane = image.planes.first;
+
+    return InputImage.fromBytes(
+      bytes: plane.bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: plane.bytesPerRow,
       ),
-      onSetupComplete: () => setState(() => estado = 'render + camara activos'),
-      setup: setup,
     );
-    setState(() {});
   }
 
   @override
   void dispose() {
-    threeJs?.dispose();
     camera?.dispose();
+    _segmenter.close();
     super.dispose();
-  }
-
-  Future<void> setup() async {
-    final threeJs = this.threeJs!;
-    threeJs.scene = three.Scene();
-    threeJs.camera = three.PerspectiveCamera(
-      45,
-      threeJs.width / threeJs.height,
-      0.1,
-      100,
-    );
-    threeJs.camera.position.setValues(0, 0, 4);
-    threeJs.camera.lookAt(threeJs.scene.position);
-
-    threeJs.scene.add(three.AmbientLight(0xffffff, 1.2));
-    final key = three.DirectionalLight(0xffffff, 2.0);
-    key.position.setValues(2, 4, 3);
-    threeJs.scene.add(key);
-
-    // Se usa un modelo del catalogo que sí carga (los que traen
-    // KHR_materials_specular con specularFactor entero fallan: ver README §3.2).
-    three.Object3D? jewel;
-    try {
-      final loader = three.GLTFLoader().setPath('assets/');
-      final gltf = await loader.fromAsset('cartier.glb');
-      if (gltf != null) {
-        jewel = gltf.scene;
-        threeJs.scene.add(jewel);
-      }
-    } catch (_) {
-      // Si falla el modelo, el spike sigue siendo valido: lo que se mide es la
-      // convivencia de render y camara, no la carga.
-    }
-
-    final model = jewel;
-    threeJs.addAnimationEvent((dt) {
-      if (model != null) model.rotation.y += dt * 0.7;
-
-      _frames++;
-      final transcurrido = DateTime.now().difference(_desde).inMilliseconds;
-      if (transcurrido >= 1000) {
-        final medido = _frames * 1000 / transcurrido;
-        _frames = 0;
-        _desde = DateTime.now();
-        if (mounted) setState(() => fps = medido);
-      }
-    });
   }
 
   @override
@@ -171,35 +169,31 @@ class _SpikePageState extends State<SpikePage> {
               ),
             ),
 
-          Positioned.fill(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                if (threeJs == null &&
-                    constraints.maxWidth > 0 &&
-                    constraints.maxHeight > 0) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted && threeJs == null) {
-                      _createViewer(
-                        Size(constraints.maxWidth, constraints.maxHeight),
-                      );
-                    }
-                  });
-                }
-                return threeJs?.build() ?? const SizedBox.shrink();
-              },
+          if (_mask != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _MaskPainter(_mask!, _umbral),
+                ),
+              ),
             ),
-          ),
 
           Positioned(
             left: 0,
             right: 0,
             bottom: 28,
-            child: Column(
-              children: [
-                _Chip('render 3D: ${fps.toStringAsFixed(1)} FPS'),
-                const SizedBox(height: 8),
-                _Chip(estado),
-              ],
+            child: Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                color: Colors.black87,
+                child: Text(
+                  estado,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                ),
+              ),
             ),
           ),
         ],
@@ -208,21 +202,39 @@ class _SpikePageState extends State<SpikePage> {
   }
 }
 
-class _Chip extends StatelessWidget {
-  final String text;
-  const _Chip(this.text);
+/// Pinta la máscara en verde. Se dibuja en rejilla gruesa a propósito: lo que
+/// se está comprobando es **si cubre el brazo**, no el detalle de su borde, y
+/// recorrer cada píxel en Dart costaría más de lo que aporta.
+class _MaskPainter extends CustomPainter {
+  final SegmentationMask mask;
+  final double umbral;
+
+  const _MaskPainter(this.mask, this.umbral);
+
+  static const int _paso = 6;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          color: Colors.black87,
-          child: Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
+  void paint(Canvas canvas, Size size) {
+    final celdaX = size.width / mask.width * _paso;
+    final celdaY = size.height / mask.height * _paso;
+    final paint = Paint()..color = const Color(0x8800FF66);
+
+    for (var y = 0; y < mask.height; y += _paso) {
+      for (var x = 0; x < mask.width; x += _paso) {
+        if (mask.confidences[y * mask.width + x] < umbral) continue;
+        canvas.drawRect(
+          Rect.fromLTWH(
+            x / mask.width * size.width,
+            y / mask.height * size.height,
+            celdaX,
+            celdaY,
           ),
-        ),
-      );
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MaskPainter oldDelegate) => true;
 }
