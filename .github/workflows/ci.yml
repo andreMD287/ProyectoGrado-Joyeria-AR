@@ -101,6 +101,16 @@ jobs:
       - name: Pruebas unitarias y de widget
         run: flutter test
 
+      # El motor de render (`three_js`, ADR-16) compila ANGLE desde fuente con
+      # CMake y NDK, y exige **esta versión exacta**: el runner trae otras y el
+      # build falla con `[CXX1300] CMake '3.31.4' was not found`. Se instala
+      # antes de que la dependencia entre al pubspec, para que el commit que la
+      # añada no encuentre el CI ya roto.
+      - name: Instalar CMake para el build nativo de ANGLE
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            --install "cmake;3.31.4"
+
       # Única red para roturas nativas de Android (manifest merger, Gradle,
       # plugins JNI). flutter test no las ve. Si esta corrida sale roja por
       # licencias/NDK del runner, se quita el paso antes de mergear.
