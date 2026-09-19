@@ -175,12 +175,63 @@ class BraceletStrategy implements TrackingStrategy {
         ? axisLength * _maxWidthToAxisRatio
         : palmWidth;
 
+    final metrico = _fromWorldLandmarks(frame.worldLandmarks);
+
     return AnchorPose(
       position: position,
       rollRadians: math.atan2(axisY / imageAspect, axisX),
       scale: stableWidth,
       yawRadians: yawRadians,
+      axis3D: metrico?.axis,
+      metricWidth: metrico?.palmWidth,
       confidence: wrist.visibility ?? 1.0,
+    );
+  }
+
+  /// Eje real del antebrazo y ancho real de la palma, a partir de la
+  /// reconstrucción métrica del detector.
+  ///
+  /// Es el mismo cálculo que arriba se hace sobre la imagen, pero sobre puntos
+  /// en metros: aquí el eje **sí** es una dirección en el espacio, no una
+  /// proyección, y el ancho está en unidades reales en vez de fracciones del
+  /// frame. Eso permite al render orientar y dimensionar la pieza por
+  /// geometría en vez de por constantes calibradas a ojo.
+  ///
+  /// Devuelve `null` si el detector no entrega puntos métricos (hoy, todo lo
+  /// que no sea MediaPipe manos en Android).
+  ({Vec3 axis, double palmWidth})? _fromWorldLandmarks(List<Vec3> world) {
+    if (world.length <= pinkyMcpLandmark) return null;
+
+    final wrist = world[wristLandmark];
+    final indexMcp = world[indexMcpLandmark];
+    final pinkyMcp = world[pinkyMcpLandmark];
+
+    final palm = Vec3(
+      (indexMcp.x + pinkyMcp.x) / 2,
+      (indexMcp.y + pinkyMcp.y) / 2,
+      (indexMcp.z + pinkyMcp.z) / 2,
+    );
+
+    final axis = Vec3(
+      wrist.x - palm.x,
+      wrist.y - palm.y,
+      wrist.z - palm.z,
+    );
+    final largo = math.sqrt(
+      axis.x * axis.x + axis.y * axis.y + axis.z * axis.z,
+    );
+    if (largo <= 0) return null;
+
+    final ancho = math.sqrt(
+      math.pow(indexMcp.x - pinkyMcp.x, 2) +
+          math.pow(indexMcp.y - pinkyMcp.y, 2) +
+          math.pow(indexMcp.z - pinkyMcp.z, 2),
+    );
+    if (ancho <= 0) return null;
+
+    return (
+      axis: Vec3(axis.x / largo, axis.y / largo, axis.z / largo),
+      palmWidth: ancho,
     );
   }
 

@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 
 import '../../../../core/camera/camera_service.dart';
 import '../../../../core/filters/landmark_stabilizer.dart';
+import '../../../../core/math/geometry.dart';
 import '../../../../core/isolate/detection_isolate.dart';
 import '../../../../core/isolate/detection_runner.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
@@ -115,6 +117,12 @@ class TrackingRepositoryImpl implements TrackingRepository {
   ScalarStabilizer? _scaleStabilizer;
   ScalarStabilizer? _yawStabilizer;
 
+  /// El eje 3D orienta la pieza y el ancho métrico decide su tamaño: sin
+  /// filtrar, el ruido de la reconstrucción métrica se ve como temblor de
+  /// orientación y como latido de escala.
+  LandmarkStabilizer? _axisStabilizer;
+  ScalarStabilizer? _metricWidthStabilizer;
+
   @override
   Stream<TrackingFrame> trackingStream(JewelryCategory category) {
     final strategy = strategies[category];
@@ -141,6 +149,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // necesita el manejo circular de AngleStabilizer. Mismo afinado que
         // roll/escala como punto de partida, a validar en dispositivo.
         _yawStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
+        _axisStabilizer = OneEuroStabilizer(minCutoff: 1.5, beta: 0.5);
+        _metricWidthStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
         _lost = true;
         _lastDetectionMs = 0;
         final runner = _runnerFor(strategy.detectorKind);
@@ -210,6 +220,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
         (_sessionStabilizer ?? stabilizer).filter(anchor.position, tSeconds);
     final scale = anchor.scale;
     final yaw = anchor.yawRadians;
+    final axis = anchor.axis3D;
+    final metricWidth = anchor.metricWidth;
     return AnchorPose(
       position: position,
       rollRadians:
@@ -217,8 +229,22 @@ class TrackingRepositoryImpl implements TrackingRepository {
               anchor.rollRadians,
       scale: scale == null ? null : _scaleStabilizer?.filter(scale, tSeconds),
       yawRadians: yaw == null ? null : _yawStabilizer?.filter(yaw, tSeconds),
+      // Se filtra componente a componente y se vuelve a normalizar: el filtro
+      // no conserva la longitud, y un eje que deje de ser unitario deformaria
+      // la pieza al orientarla.
+      axis3D: axis == null
+          ? null
+          : _normalize(_axisStabilizer?.filter(axis, tSeconds) ?? axis),
+      metricWidth: metricWidth == null
+          ? null
+          : _metricWidthStabilizer?.filter(metricWidth, tSeconds),
       confidence: anchor.confidence,
     );
+  }
+
+  static Vec3 _normalize(Vec3 v) {
+    final largo = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    return largo <= 0 ? v : Vec3(v.x / largo, v.y / largo, v.z / largo);
   }
 
   /// Al recuperar el tracking la mano suele reaparecer en otro sitio; arrancar
@@ -227,6 +253,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _sessionStabilizer?.reset();
     _rollStabilizer?.reset();
     _scaleStabilizer?.reset();
+    _axisStabilizer?.reset();
+    _metricWidthStabilizer?.reset();
     _yawStabilizer?.reset();
   }
 

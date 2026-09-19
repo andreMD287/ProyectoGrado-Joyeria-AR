@@ -35,6 +35,29 @@ class AnchorPose {
   /// `BraceletStrategy._estimateYaw`.
   final double? yawRadians;
 
+  /// Eje del miembro que sostiene la pieza, **en 3D y unitario**, expresado en
+  /// el espacio métrico de la cámara ya enderezado (x a la derecha, y hacia
+  /// abajo, z alejándose).
+  ///
+  /// A diferencia de [rollRadians] y [yawRadians], que son aproximaciones
+  /// medidas sobre la imagen, esto viene de la reconstrucción métrica del
+  /// detector: es la orientación real del antebrazo en el espacio. Con ella el
+  /// render puede orientar la pieza de verdad en vez de girar una imagen plana.
+  ///
+  /// `null` cuando el detector no entrega reconstrucción métrica.
+  final Vec3? axis3D;
+
+  /// Medida real, **en metros**, de la misma distancia anatómica que [scale]
+  /// reporta en fracciones del ancho del frame.
+  ///
+  /// Las dos juntas dan la distancia a la cámara —una es el tamaño real y la
+  /// otra el aparente—, pero hace falta además el campo de visión del objetivo,
+  /// que es cosa de quien renderiza y no de la estrategia. Por eso aquí se
+  /// entrega el dato crudo y no la profundidad ya calculada.
+  ///
+  /// `null` cuando el detector no entrega reconstrucción métrica.
+  final double? metricWidth;
+
   final double confidence;
 
   const AnchorPose({
@@ -42,6 +65,8 @@ class AnchorPose {
     this.rollRadians = 0,
     this.scale,
     this.yawRadians,
+    this.axis3D,
+    this.metricWidth,
     this.confidence = 1,
   });
 }

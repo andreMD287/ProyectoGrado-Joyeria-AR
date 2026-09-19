@@ -37,9 +37,11 @@ class JewelryScene extends StatefulWidget {
   /// lleva perpendicular al eje del antebrazo).
   final double rollOffset;
 
-  /// Tamaño aparente que debe ocupar la pieza, en píxeles del área. Lo calcula
-  /// quien conoce el catálogo; la escena solo lo traduce a unidades de mundo.
+  /// Tamaño aparente, en píxeles del área. Solo se usa cuando no hay
+  /// reconstrucción métrica; entonces la pieza se dimensiona a ojo, como hacía
+  /// el overlay anterior.
   final double targetSizePx;
+
 
   const JewelryScene({
     super.key,
@@ -56,16 +58,26 @@ class JewelryScene extends StatefulWidget {
 }
 
 class _JewelrySceneState extends State<JewelryScene> {
-  /// Campo de visión vertical de la cámara virtual.
+  /// Campo de visión **horizontal** del área visible, en grados.
   ///
-  /// Todavía **no** coincide con el de la cámara física: igualarlos es el paso
-  /// siguiente, y es lo que hará que la perspectiva del modelo case con la de
-  /// la imagen. Mientras tanto se comporta como el overlay anterior.
-  static const double _fovY = 45;
+  /// Da a la cámara virtual una perspectiva comparable a la del objetivo, que
+  /// es lo que hace que un objeto girado en 3D se escorce como es debido. No se
+  /// puede leer del plugin de cámara (no expone la óptica) y la vista previa
+  /// recorta el frame con `cover`, así que corresponde al **área visible**.
+  static const double _hfovDeg = 65;
 
-  /// Profundidad a la que se sitúa la joya. Con la cámara virtual aún sin
-  /// calibrar, el valor concreto es indiferente: lo que fija el tamaño aparente
-  /// es la escala del modelo, que se calcula contra esta misma distancia.
+  /// Distancia a la que se sitúa la joya.
+  ///
+  /// Es fija a propósito. Se intentó deducir la distancia real comparando el
+  /// tamaño métrico de la mano con su tamaño aparente, y **no funciona**: la
+  /// reconstrucción métrica de MediaPipe subestima la escala absoluta (mide
+  /// unos 4,5 cm entre nudillos donde una mano adulta tiene ~8), así que la
+  /// mano se interpreta como cercana y la pieza sale hasta tres veces más
+  /// grande. Verificado en dispositivo el 2026-09-18.
+  ///
+  /// De esa reconstrucción se usa lo que sí es fiable —las **direcciones**,
+  /// que no dependen de la escala— para orientar la pieza; el tamaño se sigue
+  /// midiendo sobre la imagen, que es lo que se observa directamente.
   static const double _depth = 1.0;
 
   /// El visor **cachea su tamaño en el primer build**, así que no puede crearse
@@ -77,9 +89,15 @@ class _JewelrySceneState extends State<JewelryScene> {
 
   three.Object3D? _jewel;
 
-  /// Ancho del modelo en unidades de mundo, ya centrado. Sirve para llevarlo a
-  /// un tamaño aparente concreto sin depender de cómo lo exportaron.
-  double _modelWidth = 1;
+  /// Diámetro del modelo: su mayor extensión. Para una pieza que rodea un
+  /// miembro es el diámetro del aro, que es lo que el catálogo mide en mm.
+  double _modelDiameter = 1;
+
+  /// Eje del aro en el espacio del modelo: la dirección **de menor extensión**.
+  /// Una pieza que rodea un miembro es ancha en dos ejes y delgada en el
+  /// tercero, y ese tercero es por donde entra el brazo. Deducirlo de la malla
+  /// evita una constante por modelo y funciona con piezas que aún no existen.
+  three.Vector3 _ringAxisLocal = three.Vector3(0, 0, 1);
 
   void _createViewer(Size area) {
     _area = area;
@@ -109,9 +127,10 @@ class _JewelrySceneState extends State<JewelryScene> {
   Future<void> _setup() async {
     final viewer = _viewer!;
     viewer.scene = three.Scene();
+    final aspect = viewer.width / viewer.height;
     viewer.camera = three.PerspectiveCamera(
-      _fovY,
-      viewer.width / viewer.height,
+      _fovYFor(aspect),
+      aspect,
       0.01,
       100,
     );
@@ -135,7 +154,8 @@ class _JewelrySceneState extends State<JewelryScene> {
     final center = bounds.getCenter(three.Vector3());
 
     model.position.setValues(-center.x, -center.y, -center.z);
-    _modelWidth = math.max(size.x, 1e-6);
+    _modelDiameter = math.max(math.max(size.x, size.y), math.max(size.z, 1e-6));
+    _ringAxisLocal = _menorExtension(size);
 
     // Un contenedor propio evita pelear con la transformación que el modelo ya
     // trae: el hijo centra, el padre posiciona y orienta.
@@ -152,7 +172,25 @@ class _JewelrySceneState extends State<JewelryScene> {
     _applyAnchor();
   }
 
-  /// Sitúa y orienta la joya para la pose actual.
+  /// Campo de visión vertical que corresponde a [_hfovDeg] con este aspecto.
+  static double _fovYFor(double aspect) {
+    final halfH = math.tan(_hfovDeg * math.pi / 180 / 2) / aspect;
+    return 2 * math.atan(halfH) * 180 / math.pi;
+  }
+
+  /// Dirección del eje de menor extensión de una caja.
+  static three.Vector3 _menorExtension(three.Vector3 size) {
+    if (size.x <= size.y && size.x <= size.z) return three.Vector3(1, 0, 0);
+    if (size.y <= size.z) return three.Vector3(0, 1, 0);
+    return three.Vector3(0, 0, 1);
+  }
+
+  /// Sitúa, dimensiona y orienta la joya para la pose actual.
+  ///
+  /// Hay dos caminos. Con reconstrucción métrica la pieza se coloca a su
+  /// **distancia real** y se dimensiona con los milímetros del catálogo, así
+  /// que su tamaño en pantalla sale de la geometría; sin ella se cae al
+  /// comportamiento anterior, con el tamaño pedido en píxeles.
   void _applyAnchor() {
     final jewel = _jewel;
     final area = _area;
@@ -163,10 +201,11 @@ class _JewelrySceneState extends State<JewelryScene> {
     jewel.visible = anchor != null;
     if (anchor == null) return;
 
-    // Mitad del plano visible a la profundidad de trabajo: convierte entre
-    // píxeles de pantalla y unidades de mundo.
-    final halfHeight = _depth * math.tan(_fovY * math.pi / 180 / 2);
-    final halfWidth = halfHeight * (area.width / area.height);
+    final aspect = area.width / area.height;
+    final tanHalfV = math.tan(_fovYFor(aspect) * math.pi / 180 / 2);
+
+    final halfHeight = _depth * tanHalfV;
+    final halfWidth = halfHeight * aspect;
 
     // El ancla llega normalizada al frame; se pasa por el mismo mapeo `cover`
     // que la vista previa y de ahí a coordenadas de la cámara virtual.
@@ -177,17 +216,39 @@ class _JewelrySceneState extends State<JewelryScene> {
 
     jewel.position.setValues(ndcX * halfWidth, ndcY * halfHeight, -_depth);
 
-    // Tamaño aparente: llega en píxeles y se traduce al ancho de mundo que
-    // ocupa esa cantidad de píxeles a esta profundidad.
+    // El tamaño se pide en píxeles y se traduce al ancho de mundo que ocupan a
+    // esta distancia. Se compara contra el diámetro del modelo —su mayor
+    // extensión— porque es lo que debe casar con el ancho de la muñeca.
     final targetWorld = widget.targetSizePx / area.width * (2 * halfWidth);
-    final factor = targetWorld / _modelWidth;
+    final factor = targetWorld / _modelDiameter;
     jewel.scale.setValues(factor, factor, factor);
 
-    // El roll llega en coordenadas de pantalla, donde +Y va hacia abajo; en la
-    // escena +Y va hacia arriba, así que el giro cambia de signo.
-    jewel.rotation.z = -(anchor.rollRadians + widget.rollOffset);
-    jewel.rotation.y =
-        widget.staticYawDeg * math.pi / 180 + (anchor.yawRadians ?? 0);
+    _applyOrientation(jewel, anchor);
+  }
+
+  void _applyOrientation(three.Object3D jewel, AnchorPose anchor) {
+    final axis = anchor.axis3D;
+
+    if (axis == null) {
+      // Sin eje real solo queda girar en el plano de la pantalla, como antes.
+      jewel.rotation.z = -(anchor.rollRadians + widget.rollOffset);
+      jewel.rotation.y =
+          widget.staticYawDeg * math.pi / 180 + (anchor.yawRadians ?? 0);
+      return;
+    }
+
+    // El eje llega en el marco del detector (y hacia abajo, z alejándose) y la
+    // escena usa el de la cámara (y hacia arriba, z hacia el espectador).
+    final destino = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
+
+    // Se alinea el eje del aro con el del antebrazo, y luego se gira la pieza
+    // sobre ese mismo eje para colocar el detalle (dije, broche) donde va.
+    final alinear = three.Quaternion()
+      ..setFromUnitVectors(_ringAxisLocal, destino);
+    final girar = three.Quaternion()
+      ..setFromAxisAngle(_ringAxisLocal, widget.staticYawDeg * math.pi / 180);
+
+    jewel.quaternion.setFrom(alinear..multiply(girar));
   }
 
   @override

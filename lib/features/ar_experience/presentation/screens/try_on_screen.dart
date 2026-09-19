@@ -927,8 +927,12 @@ class _ModelOverlay extends ConsumerWidget {
   /// estrategia. Para pulseras, multiplos del ancho de la palma: una pulsera
   /// es algo mas estrecha que la palma pero se ve mas ancha por el grosor.
   /// Constante a calibrar en dispositivo.
+  /// Calibrado contra el ancho de la muneca: `scale` reporta el ancho de la
+  /// palma, y la muneca es bastante mas estrecha. Antes valia 1.15 porque el
+  /// overlay 2D dibujaba el modelo dentro de una caja con aire alrededor;
+  /// ahora el diametro del aro ocupa esa medida completa.
   double get _scaleFactor => switch (piece.categoria) {
-        JewelryCategory.bracelet => 1.15,
+        JewelryCategory.bracelet => 0.8,
         _ => 1.0,
       };
 

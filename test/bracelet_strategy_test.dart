@@ -2,17 +2,21 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/anchor_pose.dart';
+import 'package:jewelry_ar/core/math/geometry.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark_frame.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/bracelet_strategy.dart';
 
 /// Construye los 21 landmarks de MediaPipe Hands con todo en el origen salvo
 /// los tres que usa la estrategia.
+/// [world] son los 21 puntos metricos (en metros). Solo se usan los tres que
+/// mira la estrategia; el resto va al origen.
 LandmarkFrame hand({
   required (double, double) wrist,
   required (double, double) indexMcp,
   required (double, double) pinkyMcp,
   (double, double)? thumbTip,
+  ({Vec3 wrist, Vec3 indexMcp, Vec3 pinkyMcp})? world,
 }) {
   final points = List<Landmark>.filled(21, const Landmark(0, 0, 0));
   points[BraceletStrategy.wristLandmark] = Landmark(wrist.$1, wrist.$2, 0);
@@ -24,7 +28,15 @@ LandmarkFrame hand({
     points[BraceletStrategy.thumbTipLandmark] =
         Landmark(thumbTip.$1, thumbTip.$2, 0);
   }
-  return LandmarkFrame(landmarks: points);
+  final metricos = <Vec3>[];
+  if (world != null) {
+    metricos.addAll(List<Vec3>.filled(21, Vec3.zero));
+    metricos[BraceletStrategy.wristLandmark] = world.wrist;
+    metricos[BraceletStrategy.indexMcpLandmark] = world.indexMcp;
+    metricos[BraceletStrategy.pinkyMcpLandmark] = world.pinkyMcp;
+  }
+
+  return LandmarkFrame(landmarks: points, worldLandmarks: metricos);
 }
 
 void main() {
@@ -350,6 +362,103 @@ void main() {
       )!;
 
       expect(anchor.yawRadians!.abs(), lessThan(0.05));
+    });
+  });
+
+  group('geometria 3D desde los landmarks metricos', () {
+    // Mano de tamano plausible: 9 cm de la muneca al nudillo del indice y
+    // 4 cm entre nudillos, que es lo que devuelve MediaPipe en dispositivo.
+    ({Vec3 wrist, Vec3 indexMcp, Vec3 pinkyMcp}) manoMetrica({
+      double wristZ = 0,
+    }) =>
+        (
+          wrist: Vec3(0, 0.09, wristZ),
+          indexMcp: Vec3(-0.02, 0, 0),
+          pinkyMcp: Vec3(0.02, 0, 0),
+        );
+
+    test('sin puntos metricos no inventa eje ni ancho', () {
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+        ),
+      )!;
+
+      expect(anchor.axis3D, isNull);
+      expect(anchor.metricWidth, isNull);
+    });
+
+    test('el ancho metrico es la distancia real entre nudillos', () {
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(),
+        ),
+      )!;
+
+      // 4 cm entre los dos nudillos.
+      expect(anchor.metricWidth, closeTo(0.04, 1e-9));
+    });
+
+    test('el eje 3D es unitario', () {
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(wristZ: 0.05),
+        ),
+      )!;
+
+      final eje = anchor.axis3D!;
+      final largo =
+          math.sqrt(eje.x * eje.x + eje.y * eje.y + eje.z * eje.z);
+      expect(largo, closeTo(1.0, 1e-9));
+    });
+
+    test('el eje apunta de la palma hacia el codo', () {
+      // La muneca esta 9 cm "por debajo" de los nudillos en el eje y, que en
+      // este marco crece hacia abajo: el antebrazo baja.
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(),
+        ),
+      )!;
+
+      expect(anchor.axis3D!.y, greaterThan(0.9));
+      expect(anchor.axis3D!.x, closeTo(0, 1e-9));
+    });
+
+    test('recoge la profundidad, que es lo que la imagen no puede dar', () {
+      // Misma proyeccion en la imagen, distinta inclinacion real: es el caso
+      // que la heuristica 2D no distingue y esta si.
+      final plano = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(),
+        ),
+      )!;
+
+      final inclinado = BraceletStrategy().computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(wristZ: 0.09),
+        ),
+      )!;
+
+      expect(plano.axis3D!.z, closeTo(0, 1e-9));
+      expect(inclinado.axis3D!.z, greaterThan(0.5));
     });
   });
 
