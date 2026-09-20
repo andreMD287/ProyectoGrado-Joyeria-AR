@@ -121,6 +121,10 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// cuentas que deberían verse.
   static const double _occluderHoleMargin = 0.96;
 
+  /// Holgura del aro sobre el miembro: una pulsera no va a presión sobre la
+  /// piel, queda algo suelta.
+  static const double _holguraDelAro = 1.12;
+
   /// Menor extensión del modelo. En una pieza de cuentas es el grosor de la
   /// cuenta, con el que se aproxima el hueco del aro.
   double _modelThickness = 0;
@@ -276,23 +280,33 @@ class _JewelrySceneState extends State<JewelryScene> {
     // esta distancia.
     final targetWorld = widget.targetSizePx / area.width * (2 * halfWidth);
 
-    final factor = targetWorld / _modelDiameter;
-    jewel.scale.setValues(factor, factor, factor);
+    final limbPx = widget.limbDiameterPx;
+    final limbWorld =
+        limbPx == null ? 0.0 : limbPx / area.width * (2 * halfWidth);
 
-    // Hueco aproximado del aro: el exterior menos dos veces el grosor. Solo
-    // vale si el modelo tiene forma de aro —dos ejes largos y uno delgado—;
-    // hay piezas del catálogo cuya caja no la tiene y ahí no se aplica cota.
+    // Hueco del aro en unidades del modelo: el exterior menos dos veces el
+    // grosor. Solo vale si la pieza tiene forma de aro —dos ejes largos y uno
+    // delgado—; hay modelos del catálogo cuya caja no la tiene.
     final huecoModelo = _modelDiameter - 2 * _modelThickness;
-    _huecoWorld = huecoModelo > _modelDiameter * 0.3 ? huecoModelo * factor : 0;
+    final esAro = huecoModelo > _modelDiameter * 0.3;
+
+    // **Lo que tiene que encajar es el hueco alrededor del brazo**, no el
+    // diámetro exterior contra una medida cualquiera. Escalando por el exterior
+    // el hueco salía más estrecho que el antebrazo —medido: 192 px de hueco
+    // para 228 de brazo—, o sea que la pieza era fisicamente incapaz de
+    // rodearlo, y eso es lo que se veía como que no cierra.
+    //
+    // Sin forma de aro reconocible no hay hueco que ajustar y se cae al
+    // comportamiento anterior.
+    final factor = (esAro && limbWorld > 0)
+        ? limbWorld * _holguraDelAro / huecoModelo
+        : targetWorld / _modelDiameter;
+
+    jewel.scale.setValues(factor, factor, factor);
+    _huecoWorld = esAro ? huecoModelo * factor : 0;
 
     _applyOrientation(jewel, anchor);
-
-    final limbPx = widget.limbDiameterPx;
-    _applyOccluder(
-      anchor,
-      jewel,
-      limbPx == null ? 0 : limbPx / area.width * (2 * halfWidth),
-    );
+    _applyOccluder(anchor, jewel, limbWorld);
   }
 
   /// Sitúa el cilindro de oclusión sobre la extremidad.

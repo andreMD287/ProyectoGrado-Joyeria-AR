@@ -927,22 +927,32 @@ class _ModelOverlay extends ConsumerWidget {
   /// estrategia. Para pulseras, multiplos del ancho de la palma: una pulsera
   /// es algo mas estrecha que la palma pero se ve mas ancha por el grosor.
   /// Constante a calibrar en dispositivo.
-  /// Ancho del antebrazo, donde se apoya la pieza, como fraccion del ancho de
+  /// Diametro exterior de la pieza, como fraccion del ancho de palma, **para
+  /// las piezas cuya caja no tiene forma de aro** y de las que no se puede
+  /// deducir el hueco. En las demas manda [_limbToPalm], porque lo que tiene
+  /// que encajar es el hueco alrededor del brazo.
+  static const double _jewelToPalm = 1.012;
+
+  /// Ancho del antebrazo donde se apoya la pieza, como fraccion del ancho de
   /// palma que reporta `scale`.
   ///
-  /// Calibrado midiendo sobre captura con el cilindro de oclusion pintado: con
-  /// 0.85 media 220 px contra 240 px de brazo real, un 8% corto, y por ese
-  /// margen se escapaba parte del arco trasero de la pieza.
-  static const double _wristToPalm = 0.92;
-
-  /// Diametro exterior de la pieza respecto al del miembro: una pulsera queda
-  /// algo holgada y ademas tiene grosor propio.
-  static const double _jewelToLimb = 1.1;
+  /// Calibrado en dispositivo **por juicio directo**, no por medicion: cuando
+  /// la pieza cruza el brazo, la deteccion de piel sobre la captura se
+  /// fragmenta y da anchos inconsistentes en filas contiguas, asi que los
+  /// numeros que salen de ahi no son de fiar. Con 0,77 la pulsera se cerraba
+  /// antes del brazo; 0,88 es el valor con el que encaja.
+  ///
+  /// De esta constante cuelgan dos cosas a la vez: el cilindro de oclusion —que
+  /// debe medir lo que el brazo— y, a traves del hueco, el tamano de la pieza.
+  ///
+  /// **Limite conocido:** la proporcion antebrazo/palma varia entre personas, y
+  /// esto se ajusto sobre una sola. Con otra muneca quedara algo distinto.
+  static const double _limbToPalm = 0.88;
 
   /// Tamano exterior de la pieza como multiplo de la medida que reporta la
   /// estrategia.
   double get _scaleFactor => switch (piece.categoria) {
-        JewelryCategory.bracelet => _wristToPalm * _jewelToLimb,
+        JewelryCategory.bracelet => _jewelToPalm,
         _ => 1.0,
       };
 
@@ -952,7 +962,7 @@ class _ModelOverlay extends ConsumerWidget {
     if (piece.categoria != JewelryCategory.bracelet || scale == null) {
       return null;
     }
-    return fit.lengthOf(scale) * _wristToPalm;
+    return fit.lengthOf(scale) * _limbToPalm;
   }
 
   /// Rotacion extra sobre el angulo que reporta la estrategia.
