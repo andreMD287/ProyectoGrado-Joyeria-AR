@@ -28,7 +28,7 @@ Escenarios medibles (estímulo → respuesta → medida): ver SDD §2.6.1.
 ## 2. Restricciones
 
 - **Framework fijo:** Flutter/Dart.
-- **Render de la prueba virtual (flujo principal):** `CameraPreview` + overlay de GLB vía `model_viewer_plus`. **No** usa `ARNode` / hit-test de ARCore/ARKit para el anclaje anatómico.
+- **Render de la prueba virtual (flujo principal):** `CameraPreview` + escena 3D `three_js` con cámara en perspectiva (ADR-16). La pieza se sitúa **dentro** de la escena y un cono elíptico invisible con el eje del antebrazo la ocluye por buffer de profundidad (ADR-17). **No** usa `ARNode` / hit-test de ARCore/ARKit para el anclaje anatómico.
 - **`ar_flutter_plugin_2`:** permanece en el `pubspec` (visor/colocación sobre superficie heredada de la validación previa); **no** participa en el pipeline de anclaje corporal. ARCore/ARKit están declarados como *optional* en el manifest.
 - **Dispositivo físico** para cámara + tracking (no emulador/simulador).
 - **Plugins nativos:** `hand_landmarker` (JNI), ML Kit (platform channels), Vision en iOS (channel propio).
@@ -238,7 +238,8 @@ Toda sesión de tracking crea un `DetectionIsolate` con su propia instancia del 
 |---|---|---|
 | Landmark (x, y) | Normalizado [0,1] en el espacio del preview | **Android** Face/Pose: `normalizeMlKitLandmarkToPreview` (swap 90°/270°, espejo frontal). **iOS:** división simple `x/w`, `y/h` (sin cambio). Manos: el plugin ya entrega [0,1]. |
 | Landmark (z) | Profundidad relativa | Pose deja `z` en escala cruda de ML Kit (no afecta el overlay 2D) |
-| Landmark métrico (x, y, z) | Metros, origen en el centro geométrico de la mano | Solo MediaPipe manos en Android. Viaja aparte en `LandmarkFrame` (ADR-15) y se endereza con `rotateVectorToUpright`; vacío en el resto de detectores |
+| Landmark métrico (x, y, z) | Metros, origen en el centro geométrico de la mano | Solo MediaPipe manos en Android. Viaja aparte en `LandmarkFrame` (ADR-15) y se endereza con `rotateVectorToUpright`; vacío en el resto de detectores. **De él solo se usan direcciones** —eje del antebrazo, normal de la palma—: su escala absoluta yerra ~45% y su ancho de palma varía un 65% al girar la mano (ADR-14) |
+| Geometría del antebrazo | Eje extrapolado desde la mano; ancho por proporción antropométrica | Ningún detector lo mide (ADR-17). El eje trae error angular cuando la muñeca se dobla |
 | Overlay | `left/top = position.x/y * areaSize` | Implementado en `TryOnScreen` |
 | Escala mm → tamaño en pantalla | Dimensiones del catálogo | **No implementado** (`geometry.dart` tiene `Vec3` + normalización ML Kit) |
 
@@ -355,7 +356,7 @@ No se replica la tabla aquí para evitar divergencia entre documentos.
 | 6 | Aretes y collares | ✅ Funcional en dispositivo (deuda §6.5 / precisión) |
 | 7 | Paridad iOS (manos) | ✅ Hecho |
 
-Pendiente de producto/arquitectura abierta: migrar el render a `three_js` para que la pieza deje de verse superpuesta (Alta, ADR-16; spike en `spikes/B7-motor-render`), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, escala mm del overlay, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5), oclusión por objetos externos (B6).
+Pendiente de producto/arquitectura abierta: el ajuste del aro sobre el brazo no convence al usuario y topa con el límite de ADR-17 —ningún detector mide el antebrazo— (Alta), constantes antropométricas calibradas sobre una sola muñeca (Alta), temblor residual (Media), política de degradación al perder tracking, decisión sobre `ar_flutter_plugin_2`, escala mm del overlay, modelos GLB reales (D2), escenarios de calidad medidos en dispositivo (complementar B5), oclusión por objetos externos (B6).
 
 ---
 
