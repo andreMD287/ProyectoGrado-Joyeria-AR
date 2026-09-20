@@ -101,6 +101,33 @@ Se instala con `sdkmanager --install "cmake;3.31.4"`. **El CI tendrá que hacerl
 
 ---
 
+## 3.5. Qué se probó después aquí (resultados negativos)
+
+Esta misma app sirvió de banco para dos preguntas posteriores sobre **de dónde sacar la geometría del brazo**. `lib/main.dart` conserva el último experimento; lo que importa son los hallazgos.
+
+### Segmentación de persona — **no sirve**
+
+`google_mlkit_selfie_segmentation` 0.11.0 (la 0.12+ exige Dart `^3.12`, fuera del SDK que fija el CI). Falla por dos motivos independientes:
+
+- **No distingue el brazo.** La máscara cubre casi toda la escena —escritorio, ratón, suelo— porque el modelo está entrenado para *selfies*: persona de frente sobre fondo lejano. Un brazo sobre un escritorio visto por la cámara trasera no se le parece.
+- **Corre a 2,5 Hz**, cuatro veces por debajo del presupuesto de detección (ADR-12).
+
+### Detección de pose para el eje del antebrazo — **no sirve, y engaña**
+
+`google_mlkit_pose_detection`, que ya es dependencia del proyecto para collares, entrega muñeca y codo: con esos dos puntos el eje del antebrazo dejaría de extrapolarse desde la mano.
+
+Devuelve una pose de 33 puntos a 15 Hz, pero **todos caen amontonados sobre la mano**: los que marca como muñeca y codo aterrizan en los dedos. El modelo encaja un cuerpo entero dentro de la mano.
+
+Lo peligroso es que los reporta con **`likelihood` de 0,99**. Esa métrica **no sirve como filtro de validez** en este caso: es alta sobre puntos completamente inventados.
+
+### Consecuencia para el producto
+
+Ningún detector disponible ve el antebrazo: Hands termina en la muñeca, Pose lo alucina y la segmentación no lo separa del fondo. La dirección del antebrazo se seguirá extrapolando desde la mano, con el error angular que eso implica cuando la muñeca se dobla (medido: 95° estimados contra un brazo que bajaba hacia la derecha).
+
+La mitigación aplicada es acortar la extrapolación: `BraceletStrategy.forearmOffset` baja de 0,45 a 0,20, porque el desvío lateral es proporcional a esa distancia. Medido sobre captura, el desvío del ancla respecto al eje del brazo pasó de **25 px a ~5 px**.
+
+---
+
 ## 4. Recomendación
 
 Adoptar `three_js` como motor de render de la prueba virtual. La justificación completa y las alternativas descartadas (`model_viewer_plus`, `flutter_scene`, Depth API de ARCore/ARKit) están en **ADR-16** del SDD, que es la fuente única de las decisiones de arquitectura.

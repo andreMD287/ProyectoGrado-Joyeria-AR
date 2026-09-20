@@ -1,24 +1,23 @@
-// Spike B8 — ¿sirve la segmentación para medir el brazo?
+// Spike B9 — ¿ve ML Kit Pose el antebrazo con solo un brazo en el encuadre?
 //
-// El anclaje actual no mide el brazo: lo deduce de la mano. MediaPipe Hands
-// solo ve 21 puntos de la mano, y el último es la muñeca, así que la posición
-// de la pieza, el ancho del miembro y su eje son extrapolaciones a partir de
-// la palma. Por eso todo varía con el escorzo cuando cambia el ángulo de la
-// cámara, que es lo que se observa en dispositivo.
+// El anclaje de pulseras estima la direccion del antebrazo **prolongando el
+// eje de la mano**, porque MediaPipe Hands no ve mas alla de la muñeca. Eso
+// falla cuando la muñeca esta doblada: medido sobre captura con el overlay de
+// diagnostico, el eje estimado apuntaba 95 grados (casi recto hacia abajo)
+// mientras el antebrazo real bajaba hacia la derecha. Ese error angular
+// descentra el ancla y hace que la pieza no cierre sobre el brazo.
 //
-// La segmentación mediría la silueta real. Pero el modelo de ML Kit está
-// entrenado para **selfies**: persona de frente, cámara frontal. Aquí se le va
-// a dar un brazo sobre un escritorio visto por la cámara trasera, que es un
-// caso muy distinto. La pregunta que decide si vale la pena seguir es una
-// sola: **¿segmenta el brazo?**
-//
-// Se pinta la máscara en verde sobre la imagen. O cubre el brazo, o no.
+// `google_mlkit_pose_detection` ya es dependencia del proyecto (collares) y
+// entrega muñeca y codo, con lo que el eje dejaria de adivinarse. La duda es
+// si detecta algo: esta entrenado para cuerpos completos y aqui solo hay un
+// brazo visto por la camara trasera. Es la misma pregunta que hundio a la
+// segmentacion, asi que se comprueba igual: pintando lo que detecte.
 
 import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:google_mlkit_selfie_segmentation/google_mlkit_selfie_segmentation.dart';
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 void main() => runApp(const SpikeApp());
 
@@ -41,9 +40,12 @@ class SpikePage extends StatefulWidget {
 
 class _SpikePageState extends State<SpikePage> {
   CameraController? camera;
-  final _segmenter = SelfieSegmenter(mode: SegmenterMode.stream);
+  final _detector = PoseDetector(
+    options: PoseDetectorOptions(mode: PoseDetectionMode.stream),
+  );
 
-  SegmentationMask? _mask;
+  Pose? _pose;
+  Size _imagen = Size.zero;
   String estado = 'iniciando...';
   int _sensorOrientation = 0;
 
@@ -51,9 +53,6 @@ class _SpikePageState extends State<SpikePage> {
   int _frames = 0;
   DateTime _desde = DateTime.now();
   double hz = 0;
-
-  /// Umbral de confianza para considerar un pixel parte del sujeto.
-  static const double _umbral = 0.5;
 
   @override
   void initState() {
@@ -67,8 +66,6 @@ class _SpikePageState extends State<SpikePage> {
       setState(() => estado = 'sin camaras');
       return;
     }
-    // Trasera: es la que usa la prueba de pulseras, y el caso dificil para un
-    // modelo pensado para selfies.
     final trasera = camaras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.back,
       orElse: () => camaras.first,
@@ -79,7 +76,6 @@ class _SpikePageState extends State<SpikePage> {
       trasera,
       ResolutionPreset.medium,
       enableAudio: false,
-      // ML Kit necesita un solo plano.
       imageFormatGroup: ImageFormatGroup.nv21,
     );
     await controller.initialize();
@@ -99,7 +95,7 @@ class _SpikePageState extends State<SpikePage> {
       final input = _toInputImage(frame);
       if (input == null) return;
 
-      final mask = await _segmenter.processImage(input);
+      final poses = await _detector.processImage(input);
 
       _frames++;
       final ms = DateTime.now().difference(_desde).inMilliseconds;
@@ -109,14 +105,32 @@ class _SpikePageState extends State<SpikePage> {
         _desde = DateTime.now();
       }
 
-      if (mounted) {
-        setState(() {
-          _mask = mask;
-          estado = mask == null
-              ? 'sin mascara'
-              : 'mascara ${mask.width}x${mask.height} · ${hz.toStringAsFixed(1)} Hz';
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        // Los landmarks vienen en pixeles del frame **ya rotado**, asi que con
+        // el sensor a 90 grados los ejes estan intercambiados.
+        _imagen = _sensorOrientation == 90 || _sensorOrientation == 270
+            ? Size(frame.height.toDouble(), frame.width.toDouble())
+            : Size(frame.width.toDouble(), frame.height.toDouble());
+
+        if (poses.isEmpty) {
+          _pose = null;
+          estado = 'SIN POSE · ${hz.toStringAsFixed(1)} Hz';
+        } else {
+          _pose = poses.first;
+          final m = poses.first.landmarks;
+          String v(PoseLandmarkType t) {
+            final l = m[t];
+            return l == null ? '-' : l.likelihood.toStringAsFixed(2);
+          }
+
+          estado = 'pose: ${m.length} pts · ${hz.toStringAsFixed(1)} Hz\n'
+              'muñeca izq ${v(PoseLandmarkType.leftWrist)} · '
+              'codo izq ${v(PoseLandmarkType.leftElbow)}\n'
+              'muñeca der ${v(PoseLandmarkType.rightWrist)} · '
+              'codo der ${v(PoseLandmarkType.rightElbow)}';
+        }
+      });
     } catch (e) {
       if (mounted) setState(() => estado = 'error: $e');
     } finally {
@@ -146,7 +160,7 @@ class _SpikePageState extends State<SpikePage> {
   @override
   void dispose() {
     camera?.dispose();
-    _segmenter.close();
+    _detector.close();
     super.dispose();
   }
 
@@ -169,12 +183,10 @@ class _SpikePageState extends State<SpikePage> {
               ),
             ),
 
-          if (_mask != null)
+          if (_pose != null && _imagen != Size.zero)
             Positioned.fill(
               child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _MaskPainter(_mask!, _umbral),
-                ),
+                child: CustomPaint(painter: _PosePainter(_pose!, _imagen)),
               ),
             ),
 
@@ -186,7 +198,7 @@ class _SpikePageState extends State<SpikePage> {
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 color: Colors.black87,
                 child: Text(
                   estado,
@@ -202,39 +214,56 @@ class _SpikePageState extends State<SpikePage> {
   }
 }
 
-/// Pinta la máscara en verde. Se dibuja en rejilla gruesa a propósito: lo que
-/// se está comprobando es **si cubre el brazo**, no el detalle de su borde, y
-/// recorrer cada píxel en Dart costaría más de lo que aporta.
-class _MaskPainter extends CustomPainter {
-  final SegmentationMask mask;
-  final double umbral;
+/// Pinta lo detectado. Muñeca y codo van resaltados y unidos por una linea,
+/// porque ese segmento **es** el eje del antebrazo que se busca.
+class _PosePainter extends CustomPainter {
+  final Pose pose;
+  final Size imagen;
 
-  const _MaskPainter(this.mask, this.umbral);
-
-  static const int _paso = 6;
+  const _PosePainter(this.pose, this.imagen);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final celdaX = size.width / mask.width * _paso;
-    final celdaY = size.height / mask.height * _paso;
-    final paint = Paint()..color = const Color(0x8800FF66);
+    // El preview se dibuja con `cover`: misma escala en ambos ejes y recorte.
+    final escala = size.width / imagen.width > size.height / imagen.height
+        ? size.width / imagen.width
+        : size.height / imagen.height;
+    final dx = (size.width - imagen.width * escala) / 2;
+    final dy = (size.height - imagen.height * escala) / 2;
 
-    for (var y = 0; y < mask.height; y += _paso) {
-      for (var x = 0; x < mask.width; x += _paso) {
-        if (mask.confidences[y * mask.width + x] < umbral) continue;
-        canvas.drawRect(
-          Rect.fromLTWH(
-            x / mask.width * size.width,
-            y / mask.height * size.height,
-            celdaX,
-            celdaY,
-          ),
-          paint,
-        );
-      }
+    Offset? p(PoseLandmarkType t) {
+      final l = pose.landmarks[t];
+      if (l == null) return null;
+      return Offset(l.x * escala + dx, l.y * escala + dy);
+    }
+
+    final punto = Paint()..color = const Color(0xCC00E5FF);
+    for (final l in pose.landmarks.values) {
+      canvas.drawCircle(
+        Offset(l.x * escala + dx, l.y * escala + dy),
+        6,
+        punto,
+      );
+    }
+
+    final destacado = Paint()..color = const Color(0xFFFF3D00);
+    final linea = Paint()
+      ..color = const Color(0xFFFF3D00)
+      ..strokeWidth = 6;
+
+    for (final (muneca, codo) in [
+      (PoseLandmarkType.leftWrist, PoseLandmarkType.leftElbow),
+      (PoseLandmarkType.rightWrist, PoseLandmarkType.rightElbow),
+    ]) {
+      final a = p(muneca);
+      final b = p(codo);
+      if (a == null || b == null) continue;
+      canvas.drawLine(a, b, linea);
+      canvas.drawCircle(a, 14, destacado);
+      canvas.drawCircle(b, 14, destacado);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _MaskPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _PosePainter oldDelegate) => true;
 }
