@@ -33,9 +33,21 @@ class BraceletStrategy implements TrackingStrategy {
   static const int pinkyMcpLandmark = 17;
 
   /// Cuánto se avanza desde la muñeca hacia el codo, como fracción de la
-  /// longitud palma→muñeca. Es la constante principal a calibrar en
-  /// dispositivo: si la pulsera queda sobre la mano, subirla; si se va al
-  /// antebrazo, bajarla.
+  /// longitud palma→muñeca.
+  ///
+  /// **Conviene que sea corto, y no solo por anatomía.** La dirección hacia la
+  /// que se avanza es el eje de la *mano* prolongado, porque ningún detector
+  /// disponible ve el antebrazo: MediaPipe Hands termina en la muñeca, ML Kit
+  /// Pose encaja un cuerpo entero dentro de la mano —con confianza 0,99 sobre
+  /// puntos que caen en los dedos— y la segmentación no distingue el brazo del
+  /// escritorio. Todo eso se comprobó en dispositivo.
+  ///
+  /// Como la muñeca se dobla, esa dirección trae error angular: medido sobre
+  /// captura, el eje estimado apuntaba 95° mientras el antebrazo real bajaba
+  /// hacia la derecha. El desvío lateral que produce es **proporcional a esta
+  /// constante**, porque es el brazo de palanca del error. Valía 0,45; se baja
+  /// a 0,20, que además es donde se lleva de verdad una pulsera: justo pasado
+  /// el hueso de la muñeca, no a media palma de distancia.
   final double forearmOffset;
 
   /// Ancho de palma mínimo (en fracción del ancho del frame) para dar la
@@ -73,7 +85,7 @@ class BraceletStrategy implements TrackingStrategy {
 
 
   BraceletStrategy({
-    this.forearmOffset = 0.45,
+    this.forearmOffset = 0.20,
     this.minPalmWidth = 0.04,
   });
 

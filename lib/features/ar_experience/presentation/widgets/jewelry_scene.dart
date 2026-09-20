@@ -104,12 +104,33 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// lugar de un recorte plano sobre la imagen.
   three.Object3D? _occluder;
 
-  /// Largo del cilindro en diámetros de hueco: basta con que sobresalga por
-  /// ambos lados para tapar en cualquier inclinación.
+  /// Largo del proxy en diámetros: basta con que sobresalga por ambos lados
+  /// para tapar en cualquier inclinación.
   static const double _occluderLengthRatio = 3.0;
+
+  /// Cuánto se estrecha el proxy hacia la mano respecto al lado del codo.
+  static const double _occluderTaper = 0.85;
+
+  /// Grosor del antebrazo respecto a su ancho. No es redondo: es bastante más
+  /// ancho de lado a lado que de dorso a palma. Con un proxy circular hay que
+  /// elegir entre taparlo de más en profundidad o de menos a lo ancho.
+  static const double _occluderFlatness = 0.75;
+
+  /// Margen por debajo del hueco del aro. El brazo tiene que **caber** dentro
+  /// de la pieza: si el proxy es más ancho que el hueco, la atraviesa y se come
+  /// cuentas que deberían verse.
+  static const double _occluderHoleMargin = 0.96;
+
+  /// Menor extensión del modelo. En una pieza de cuentas es el grosor de la
+  /// cuenta, con el que se aproxima el hueco del aro.
+  double _modelThickness = 0;
 
   /// Diámetro exterior del modelo: su mayor extensión.
   double _modelDiameter = 1;
+
+  /// Hueco del aro ya renderizado, en unidades de mundo, o 0 si la pieza no
+  /// tiene forma de aro reconocible. Acota cuánto puede engordar el proxy.
+  double _huecoWorld = 0;
 
 
   /// Eje del aro en el espacio del modelo: la dirección **de menor extensión**.
@@ -165,7 +186,9 @@ class _JewelrySceneState extends State<JewelryScene> {
     // Se dibuja antes que la joya (renderOrder menor) para que su profundidad
     // ya esté en el buffer cuando se pinte la pieza.
     final occluder = three.Mesh(
-      three.CylinderGeometry(0.5, 0.5, 1, 48),
+      // Tronco de cono, no cilindro: el antebrazo se estrecha hacia la
+      // muneca. El extremo +Y mira al codo, que es el ancho.
+      three.CylinderGeometry(0.5, 0.5 * _occluderTaper, 1, 48),
       three.MeshBasicMaterial.fromMap({'colorWrite': false}),
     )..renderOrder = -1;
     viewer.scene.add(occluder);
@@ -187,6 +210,7 @@ class _JewelrySceneState extends State<JewelryScene> {
     // muneca justo esa cantidad (visto en dispositivo: se iba hacia un lado).
     model.position.sub(center);
     _modelDiameter = math.max(math.max(size.x, size.y), math.max(size.z, 1e-6));
+    _modelThickness = math.min(math.min(size.x, size.y), size.z);
     _ringAxisLocal = _menorExtension(size);
 
     // Un contenedor propio evita pelear con la transformación que el modelo ya
@@ -255,6 +279,12 @@ class _JewelrySceneState extends State<JewelryScene> {
     final factor = targetWorld / _modelDiameter;
     jewel.scale.setValues(factor, factor, factor);
 
+    // Hueco aproximado del aro: el exterior menos dos veces el grosor. Solo
+    // vale si el modelo tiene forma de aro —dos ejes largos y uno delgado—;
+    // hay piezas del catálogo cuya caja no la tiene y ahí no se aplica cota.
+    final huecoModelo = _modelDiameter - 2 * _modelThickness;
+    _huecoWorld = huecoModelo > _modelDiameter * 0.3 ? huecoModelo * factor : 0;
+
     _applyOrientation(jewel, anchor);
 
     final limbPx = widget.limbDiameterPx;
@@ -287,15 +317,48 @@ class _JewelrySceneState extends State<JewelryScene> {
 
     occluder.position.setFrom(jewel.position);
 
+    // El brazo no puede ser más ancho que el hueco por el que pasa la pieza.
+    // La estimación anatómica ignora la pieza, así que puede pedir un proxy
+    // más gordo que el aro; entonces lo atraviesa y tapa lo que sí debe verse.
+    final ancho = _huecoWorld > 0
+        ? math.min(limbDiameterWorld, _huecoWorld * _occluderHoleMargin)
+        : limbDiameterWorld;
+
     occluder.scale.setValues(
-      limbDiameterWorld,
-      limbDiameterWorld * _occluderLengthRatio,
-      limbDiameterWorld,
+      ancho,
+      ancho * _occluderLengthRatio,
+      ancho * _occluderFlatness,
     );
 
-    // El cilindro nace con su eje en +Y; se lleva al eje del antebrazo.
-    final destino = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
-    occluder.quaternion.setFromUnitVectors(three.Vector3(0, 1, 0), destino);
+    // El proxy nace con su eje en +Y. Se alinea con el antebrazo y además se
+    // gira sobre ese eje para que su lado ancho quede de lado a lado del brazo
+    // —perpendicular a la normal de la palma—, que es como está achatado de
+    // verdad. Sin ese giro, el achatamiento caería en una dirección arbitraria.
+    final n = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
+    final alinear = three.Quaternion()
+      ..setFromUnitVectors(three.Vector3(0, 1, 0), n);
+
+    final palma = anchor.palmNormal3D;
+    if (palma == null) {
+      occluder.quaternion.setFrom(alinear);
+      return;
+    }
+
+    final normalPalma = three.Vector3(-palma.x, palma.y, palma.z)..normalize();
+    final ancho3D = (n.clone()..cross(normalPalma));
+    if (ancho3D.length < 1e-6) {
+      occluder.quaternion.setFrom(alinear);
+      return;
+    }
+    ancho3D.normalize();
+
+    final xTrasAlinear = three.Vector3(1, 0, 0)..applyQuaternion(alinear);
+    final cos = xTrasAlinear.dot(ancho3D).clamp(-1.0, 1.0);
+    final sin = (xTrasAlinear.clone()..cross(ancho3D)).dot(n);
+    final girar = three.Quaternion()
+      ..setFromAxisAngle(n, math.atan2(sin, cos));
+
+    occluder.quaternion.setFrom(girar..multiply(alinear));
   }
 
   void _applyOrientation(three.Object3D jewel, AnchorPose anchor) {

@@ -61,8 +61,8 @@ void main() {
         ),
       )!;
 
-      // muneca.y + (muneca.y - palma.y) * forearmOffset = 0.6 + 0.2 * 0.45
-      expect(anchor.position.y, closeTo(0.69, 1e-9));
+      // muneca.y + (muneca.y - palma.y) * forearmOffset = 0.6 + 0.2 * 0.20
+      expect(anchor.position.y, closeTo(0.64, 1e-9));
       expect(anchor.position.x, closeTo(0.5, 1e-9));
     });
 
