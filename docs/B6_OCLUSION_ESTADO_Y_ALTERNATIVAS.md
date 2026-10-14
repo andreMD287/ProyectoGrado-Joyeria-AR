@@ -240,6 +240,15 @@ modelo**. La caja envolvente de un GLB no da el hueco del aro — en una pieza d
 delgada es el grosor de la cuenta, pero en un brazalete es el ancho de la banda. Por eso se estima como
 fracción del ancho de palma.
 
+**Actualización (2026-10-13).** Lo que sí se puede deducir del modelo es el **hueco**, siempre que se mida
+sobre los vértices y no sobre la caja: `lib/core/math/ring_geometry.dart` toma la mediana del borde interior
+por sectores angulares alrededor del eje del aro. La estimación por caja subestimaba el hueco (0,68 del
+diámetro en `pulsera_perlas_basica` frente a 0,845 real; 0,847 frente a 0,909 en `cartier`), lo que inflaba
+cada pieza en una proporción distinta. El ancho del **brazo** sigue saliendo de la palma (`_limbToPalm`).
+
+Para calibrar esa constante, el overlay de diagnóstico (botón de diana) dibuja ahora el proxy en alambre
+rojo: basta comparar sus bordes con los del brazo en una captura.
+
 ### 4.2. Resultados medidos
 
 | Qué se midió | Antes | Después |
@@ -248,6 +257,8 @@ fracción del ancho de palma.
 | Oscilación del eje (temblor) | 9,14° | **1,13°** (amortiguando la profundidad al 25 % y cerrando filtros) |
 | FPS de render con la cámara corriendo | — | **56,6** sostenidos (presupuesto de detección: 10 FPS) |
 | Modelos del catálogo que carga el motor | 5 de 7 | **7 de 7** (con el normalizador de GLB) |
+| Hueco del aro, error de la estimación (perlas / cartier) | −20 % / −7 % | **0 %** (medido sobre vértices, igual en dispositivo y fuera de línea) |
+| Ancho del proxy frente al brazo real (2026-10-13) | −20 % (200 px vs 252) | **±3 %** (`_limbToPalm` de 0,88 a 1,08) |
 
 El coste en rendimiento de esta oclusión es **nulo en la práctica**: el proxy son 48 segmentos sin
 material visible, dibujados por el mismo motor que ya dibuja la pieza.
@@ -257,18 +268,21 @@ material visible, dibujados por el mismo motor que ya dibuja la pieza.
 1. **El ajuste del aro no convence al usuario.** Al cierre del trabajo el veredicto fue literalmente
    *"no me convence"*. **No está cerrado como resuelto** ni aquí ni en el SDD. Topa con ADR-17: sin una
    fuente que mida el brazo, el eje y el ancho son estimaciones.
-2. **Las constantes antropométricas se calibraron sobre una sola persona** y por juicio visual
-   (`_limbToPalm = 0.88`, holgura del aro `1.12`). La medición automática sobre captura se fragmenta
-   justo donde la pieza cruza el brazo. **Riesgo directo para el Sprint 6**: unas pruebas de usabilidad
-   con varias personas van a exponerlo.
+2. **Las constantes antropométricas se calibraron sobre una sola persona.** `_limbToPalm = 1.08` ya se
+   midió sobre captura contra el proxy visible (antes era 0,88 a ojo, compensando el error del hueco), pero
+   la holgura del aro (`1.12`) sigue siendo juicio visual. **Riesgo directo para el Sprint 6**: unas
+   pruebas de usabilidad con varias personas van a exponerlo; el alambre rojo hace esa validación rápida.
 3. **Error angular cuando la muñeca se dobla.** El eje se extrapola desde la mano; medido con el
    overlay de diagnóstico, estimaba 95° (casi recto hacia abajo) mientras el antebrazo real bajaba
-   hacia la derecha.
+   hacia la derecha. Con el proxy visible se ve directamente: con la muñeca algo desviada el proxy se
+   inclina respecto al brazo y el ancla queda ~25 px a un lado. Es ahora **el error dominante** del ajuste,
+   y no se corrige con constantes (ADR-17).
 4. **Temblor residual.** Queda un pico ocasional de posición (salto máximo de 0,128 del ancho del
    frame) que parece fallo puntual de detección, no ruido continuo.
-5. **`cartier.glb` no se puede medir.** Su caja envolvente no describe un aro —extensión
-   [26,6 × 71,9 × 35,2] y tres mallas extra— así que ni el diámetro ni el eje salen de ella. Hay que
-   reexportarla.
+5. ~~**`cartier.glb` no se puede medir.**~~ **Resuelto (2026-10-13).** El problema no era la forma
+   sino la caja: `BoundingBox` de three_js transforma la caja de cada malla por la matriz de su nodo y con
+   nodos rotados la infla (3,50 de diámetro donde los vértices miden 2,53). Medida sobre vértices, la pieza
+   es un aro normal y no hace falta reexportarla.
 6. **Aretes y collares, sin oclusión.**
 
 ---
