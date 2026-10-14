@@ -4,8 +4,10 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart' as hl;
 
 import '../../../../core/math/geometry.dart';
+import '../../../../core/vision/forearm_probe.dart';
 import '../../domain/entities/landmark.dart';
 import '../../domain/entities/landmark_frame.dart';
+import '../repositories/tracking_repository_impl.dart';
 import 'landmark_detector.dart';
 
 /// Detector de manos en Android, basado en `hand_landmarker` (MediaPipe Hand
@@ -107,7 +109,55 @@ class AndroidHandDetector implements LandmarkDetector {
     if (at == null || DateTime.now().difference(at) > _staleAfter) {
       return LandmarkFrame.empty;
     }
-    return _latest;
+    final latest = _latest;
+    if (latest.isEmpty) return latest;
+
+    // Los landmarks son de un frame algo anterior (el plugin los entrega por
+    // su stream); el brazo se busca en este, que es el que se tiene. A la
+    // frecuencia de detección la diferencia es de pocos píxeles, y la sonda
+    // explora a ambos lados del eje.
+    final sampler = _yuvSampler(frame, sensorOrientation);
+    if (sampler == null) return latest;
+    return LandmarkFrame(
+      landmarks: latest.landmarks,
+      worldLandmarks: latest.worldLandmarks,
+      forearm: probeForearm(
+        landmarks: latest.landmarks,
+        sample: sampler,
+        imageAspect: TrackingRepositoryImpl.uprightAspect(
+          frame,
+          sensorOrientation,
+        ),
+      ),
+    );
+  }
+
+  /// Lector de color sobre el frame en YUV 4:2:0, en coordenadas del frame
+  /// vertical. Solo se leen unos cientos de píxeles por frame, así que no se
+  /// convierte la imagen: se va directo al byte.
+  static YuvSampler? _yuvSampler(CameraImage frame, int sensorOrientation) {
+    if (frame.planes.length < 3) return null;
+    final yP = frame.planes[0], uP = frame.planes[1], vP = frame.planes[2];
+    final w = frame.width, h = frame.height;
+    final uStride = uP.bytesPerPixel ?? 1;
+    final vStride = vP.bytesPerPixel ?? 1;
+
+    return (x, y) {
+      if (x < 0 || x >= 1 || y < 0 || y >= 1) return null;
+      final b = uprightToBuffer(x: x, y: y, rotationDegrees: sensorOrientation);
+      final bx = (b.x * w).floor().clamp(0, w - 1);
+      final by = (b.y * h).floor().clamp(0, h - 1);
+      final cx = bx >> 1, cy = by >> 1;
+      final yi = by * yP.bytesPerRow + bx;
+      final ui = cy * uP.bytesPerRow + cx * uStride;
+      final vi = cy * vP.bytesPerRow + cx * vStride;
+      if (yi >= yP.bytes.length ||
+          ui >= uP.bytes.length ||
+          vi >= vP.bytes.length) {
+        return null;
+      }
+      return Yuv(yP.bytes[yi], uP.bytes[ui], vP.bytes[vi]);
+    };
   }
 
   static Landmark _toUpright(hl.Landmark lm, int sensorOrientation) {

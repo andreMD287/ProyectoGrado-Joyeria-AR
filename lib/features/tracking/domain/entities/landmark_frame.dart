@@ -1,4 +1,5 @@
 import '../../../../core/math/geometry.dart';
+import 'forearm_observation.dart';
 import 'landmark.dart';
 
 /// Lo que un detector entrega para un frame.
@@ -22,9 +23,15 @@ class LandmarkFrame {
   final List<Landmark> landmarks;
   final List<Vec3> worldLandmarks;
 
+  /// Antebrazo encontrado en la imagen, o `null` si no se buscó o no se vio.
+  /// Solo lo calcula el detector de manos, que es el que tiene el frame crudo
+  /// a mano cuando llegan los landmarks.
+  final ForearmObservation? forearm;
+
   const LandmarkFrame({
     this.landmarks = const [],
     this.worldLandmarks = const [],
+    this.forearm,
   });
 
   static const empty = LandmarkFrame();

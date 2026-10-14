@@ -963,10 +963,17 @@ class _ModelOverlay extends ConsumerWidget {
 
   /// Diametro del miembro que la pieza rodea, en pixeles, para el occluder.
   /// Solo las pulseras rodean algo hoy; un arete cuelga del lobulo.
-  double? _limbDiameterPx(PreviewFit fit, double? scale) {
+  ///
+  /// Si la estrategia vio el brazo en la imagen se usa su ancho medido, que no
+  /// depende de la proporcion brazo/palma de cada persona ni se encoge con la
+  /// mano de canto; si no, la estimacion por [_limbToPalm].
+  double? _limbDiameterPx(PreviewFit fit, AnchorPose? anchor) {
+    final scale = anchor?.scale;
     if (piece.categoria != JewelryCategory.bracelet || scale == null) {
       return null;
     }
+    final medido = anchor?.limbWidth;
+    if (medido != null) return fit.lengthOf(medido);
     return fit.lengthOf(scale) * _limbToPalm;
   }
 
@@ -1007,7 +1014,7 @@ class _ModelOverlay extends ConsumerWidget {
           anchor: anchor,
           fit: fit,
           targetSizePx: size,
-          limbDiameterPx: _limbDiameterPx(fit, scale),
+          limbDiameterPx: _limbDiameterPx(fit, anchor),
           staticYawDeg: piece.orientacionYawDeg,
           rollOffset: _rollOffset,
           showOccluder: showOccluder,

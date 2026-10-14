@@ -68,6 +68,14 @@ class AnchorPose {
   /// `null` cuando el detector no entrega reconstrucción métrica.
   final double? metricWidth;
 
+  /// Ancho del miembro que rodea la pieza **medido en la imagen**, en
+  /// fracciones del ancho del frame. Cuando está, sustituye a la estimación
+  /// anatómica a partir de [scale]: no depende de la proporción brazo/palma de
+  /// cada persona ni se encoge con la mano de canto.
+  ///
+  /// `null` cuando no se pudo ver el miembro.
+  final double? limbWidth;
+
   final double confidence;
 
   const AnchorPose({
@@ -78,6 +86,7 @@ class AnchorPose {
     this.axis3D,
     this.palmNormal3D,
     this.metricWidth,
+    this.limbWidth,
     this.confidence = 1,
   });
 }

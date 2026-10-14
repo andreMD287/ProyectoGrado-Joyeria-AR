@@ -335,9 +335,13 @@ class _JewelrySceneState extends State<JewelryScene> {
     final anchor = widget.anchor;
     if (jewel == null || area == null) return;
 
-    // Sin pose no se dibuja, en vez de dejarla clavada donde estaba.
+    // Sin pose no se dibuja, en vez de dejarla clavada donde estaba. El proxy
+    // tampoco: no tapa nada, pero su silueta de diagnóstico quedaba flotando.
     jewel.visible = anchor != null;
-    if (anchor == null) return;
+    if (anchor == null) {
+      _occluder?.visible = false;
+      return;
+    }
 
     final aspect = area.width / area.height;
     final tanHalfV = math.tan(_fovYFor(aspect) * math.pi / 180 / 2);
@@ -359,8 +363,14 @@ class _JewelrySceneState extends State<JewelryScene> {
     final targetWorld = widget.targetSizePx / area.width * (2 * halfWidth);
 
     final limbPx = widget.limbDiameterPx;
-    final limbWorld =
-        limbPx == null ? 0.0 : limbPx / area.width * (2 * halfWidth);
+    // Lo que llega es el ancho de la **silueta** del brazo, tal como se ve.
+    // Se pasa al eje mayor de su sección, que es lo que el aro debe rodear.
+    final limbWorld = limbPx == null
+        ? 0.0
+        : limbPx /
+            area.width *
+            (2 * halfWidth) /
+            _silhouetteRatio(anchor, jewel.position);
 
     // Hueco del aro en unidades del modelo, medido sobre los vértices. Antes
     // se deducía de la caja (exterior menos dos veces su menor extensión) y
@@ -387,6 +397,35 @@ class _JewelrySceneState extends State<JewelryScene> {
 
     _applyOrientation(jewel, anchor);
     _applyOccluder(anchor, jewel, limbWorld);
+  }
+
+  /// Silueta visible de la sección del brazo respecto a su eje mayor.
+  ///
+  /// La sección no es redonda ([_occluderFlatness]) y gira con la palma. De
+  /// frente se ve el lado ancho y la relación es 1; con la mano de canto se ve
+  /// el angosto y baja a 0,75. Sin esta corrección, en esa pose el proxy y el
+  /// hueco del aro salían un 25 % más estrechos que el brazo medido (165 px de
+  /// brazo contra 125 de proxy, en dispositivo el 2026-10-13).
+  double _silhouetteRatio(AnchorPose anchor, three.Vector3 position) {
+    final axis = anchor.axis3D;
+    final palma = anchor.palmNormal3D;
+    if (axis == null || palma == null) return 1;
+
+    final n = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
+    final normalPalma = three.Vector3(-palma.x, palma.y, palma.z)..normalize();
+    final ancho = n.clone()..cross(normalPalma);
+    // Dirección en la que se mide la silueta: perpendicular al eje del brazo
+    // y a la línea de visión hacia la pieza.
+    final vista = position.clone()..normalize();
+    final silueta = n.clone()..cross(vista);
+    if (ancho.length < 1e-6 || silueta.length < 1e-6) return 1;
+    ancho.normalize();
+    silueta.normalize();
+    final grosor = n.clone()..cross(ancho);
+
+    final c = ancho.dot(silueta);
+    final g = grosor.dot(silueta) * _occluderFlatness;
+    return math.sqrt(c * c + g * g).clamp(_occluderFlatness, 1.0);
   }
 
   /// Sitúa el cilindro de oclusión sobre la extremidad.
