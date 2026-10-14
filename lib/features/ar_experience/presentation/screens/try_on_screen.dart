@@ -939,18 +939,20 @@ class _ModelOverlay extends ConsumerWidget {
   /// Ancho del antebrazo donde se apoya la pieza, como fraccion del ancho de
   /// palma que reporta `scale`.
   ///
-  /// Calibrado en dispositivo **por juicio directo**, no por medicion: cuando
-  /// la pieza cruza el brazo, la deteccion de piel sobre la captura se
-  /// fragmenta y da anchos inconsistentes en filas contiguas, asi que los
-  /// numeros que salen de ahi no son de fiar. Con 0,77 la pulsera se cerraba
-  /// antes del brazo; 0,88 es el valor con el que encaja.
+  /// **Medido sobre captura** (2026-10-13), con el proxy de oclusion dibujado
+  /// en alambre: palma de 231 px y antebrazo de ~252 px a la altura de la
+  /// pieza, o sea 1,09. El valor anterior, 0,88, se habia fijado a ojo sobre
+  /// el tamano de la pulsera mientras el hueco del aro se estimaba con la caja
+  /// envolvente; ese error inflaba la pieza en una proporcion parecida y los
+  /// dos se compensaban en la pulsera de perlas, pero no en las demas. Con el
+  /// hueco ya medido sobre los vertices, esta constante describe el brazo.
   ///
-  /// De esta constante cuelgan dos cosas a la vez: el cilindro de oclusion —que
-  /// debe medir lo que el brazo— y, a traves del hueco, el tamano de la pieza.
+  /// De ella cuelgan dos cosas a la vez: el proxy de oclusion —que debe medir
+  /// lo que el brazo— y, a traves del hueco, el tamano de la pieza.
   ///
   /// **Limite conocido:** la proporcion antebrazo/palma varia entre personas, y
-  /// esto se ajusto sobre una sola. Con otra muneca quedara algo distinto.
-  static const double _limbToPalm = 0.88;
+  /// esto se midio sobre una sola.
+  static const double _limbToPalm = 1.08;
 
   /// Tamano exterior de la pieza como multiplo de la medida que reporta la
   /// estrategia.
