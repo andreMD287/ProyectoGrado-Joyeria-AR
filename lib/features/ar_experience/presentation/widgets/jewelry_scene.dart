@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:three_js/three_js.dart' as three;
 
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/ring_geometry.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 
 /// Escena 3D que cubre toda el área de cámara y coloca la joya dentro (ADR-16).
@@ -49,7 +50,6 @@ class JewelryScene extends StatefulWidget {
   ///
   /// `null` en piezas que no rodean nada (aretes): entonces no hay oclusión.
   final double? limbDiameterPx;
-
 
   const JewelryScene({
     super.key,
@@ -125,12 +125,12 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// piel, queda algo suelta.
   static const double _holguraDelAro = 1.12;
 
-  /// Menor extensión del modelo. En una pieza de cuentas es el grosor de la
-  /// cuenta, con el que se aproxima el hueco del aro.
-  double _modelThickness = 0;
-
   /// Diámetro exterior del modelo: su mayor extensión.
   double _modelDiameter = 1;
+
+  /// Hueco y eje del aro medidos sobre los vértices, o `null` si la pieza no
+  /// tiene forma de aro reconocible (ver `ring_geometry.dart`).
+  RingMeasure? _aro;
 
   /// Hueco del aro ya renderizado, en unidades de mundo, o 0 si la pieza no
   /// tiene forma de aro reconocible. Acota cuánto puede engordar el proxy.
@@ -198,15 +198,28 @@ class _JewelrySceneState extends State<JewelryScene> {
     viewer.scene.add(occluder);
     _occluder = occluder;
 
+
     final gltf = await three.GLTFLoader().fromBytes(widget.modelBytes);
     final model = gltf?.scene;
     if (model == null) return;
 
     // El GLB viene en la escala y el origen que le dio el exportador: se
     // centra y se mide para poder pedirle después un tamaño aparente concreto.
-    final bounds = three.BoundingBox()..setFromObject(model);
-    final size = bounds.max.clone()..sub(bounds.min);
-    final center = bounds.getCenter(three.Vector3());
+    //
+    // La caja se calcula **sobre los vértices**, no con `BoundingBox`: esa
+    // transforma la caja de cada malla por la matriz de su nodo, y con nodos
+    // rotados la infla. En `cartier` daba 3,50 de diámetro donde los vértices
+    // miden 2,53, con el centro desplazado: la pieza quedaba corrida unos
+    // 15 px del eje del brazo (medido en dispositivo, 2026-10-13).
+    final puntos = _vertices(model);
+    if (puntos.isEmpty) return;
+    final (min, max) = _limites(puntos);
+    final size = three.Vector3(max.x - min.x, max.y - min.y, max.z - min.z);
+    final center = three.Vector3(
+      (max.x + min.x) / 2,
+      (max.y + min.y) / 2,
+      (max.z + min.z) / 2,
+    );
 
     // Se **resta**, no se asigna: la caja viene en coordenadas de mundo, o sea
     // que su centro ya incluye la traslacion que el modelo trae del exportador.
@@ -214,8 +227,13 @@ class _JewelrySceneState extends State<JewelryScene> {
     // muneca justo esa cantidad (visto en dispositivo: se iba hacia un lado).
     model.position.sub(center);
     _modelDiameter = math.max(math.max(size.x, size.y), math.max(size.z, 1e-6));
-    _modelThickness = math.min(math.min(size.x, size.y), size.z);
-    _ringAxisLocal = _menorExtension(size);
+    _aro = measureRing(puntos);
+    _ringAxisLocal = switch (_aro?.axis) {
+      0 => three.Vector3(1, 0, 0),
+      1 => three.Vector3(0, 1, 0),
+      2 => three.Vector3(0, 0, 1),
+      _ => _menorExtension(size),
+    };
 
     // Un contenedor propio evita pelear con la transformación que el modelo ya
     // trae: el hijo centra, el padre posiciona y orienta.
@@ -224,6 +242,37 @@ class _JewelrySceneState extends State<JewelryScene> {
     _jewel = holder;
 
     _applyAnchor();
+  }
+
+  /// Vértices del modelo en su espacio, con las transformaciones de sus nodos
+  /// aplicadas — el mismo recorrido que hace la caja envolvente.
+  static List<Vec3> _vertices(three.Object3D model) {
+    model.updateMatrixWorld(true);
+    final puntos = <Vec3>[];
+    final v = three.Vector3();
+    model.traverse((object) {
+      final position = object.geometry?.attributes['position'];
+      if (position is! three.BufferAttribute) return;
+      for (var i = 0; i < position.count; i++) {
+        v.fromBuffer(position, i).applyMatrix4(object.matrixWorld);
+        puntos.add(Vec3(v.x, v.y, v.z));
+      }
+    });
+    return puntos;
+  }
+
+  static (Vec3, Vec3) _limites(List<Vec3> puntos) {
+    var minX = double.infinity, minY = double.infinity, minZ = double.infinity;
+    var maxX = -double.infinity, maxY = -double.infinity, maxZ = -double.infinity;
+    for (final p in puntos) {
+      minX = math.min(minX, p.x);
+      minY = math.min(minY, p.y);
+      minZ = math.min(minZ, p.z);
+      maxX = math.max(maxX, p.x);
+      maxY = math.max(maxY, p.y);
+      maxZ = math.max(maxZ, p.z);
+    }
+    return (Vec3(minX, minY, minZ), Vec3(maxX, maxY, maxZ));
   }
 
   @override
@@ -284,11 +333,13 @@ class _JewelrySceneState extends State<JewelryScene> {
     final limbWorld =
         limbPx == null ? 0.0 : limbPx / area.width * (2 * halfWidth);
 
-    // Hueco del aro en unidades del modelo: el exterior menos dos veces el
-    // grosor. Solo vale si la pieza tiene forma de aro —dos ejes largos y uno
-    // delgado—; hay modelos del catálogo cuya caja no la tiene.
-    final huecoModelo = _modelDiameter - 2 * _modelThickness;
-    final esAro = huecoModelo > _modelDiameter * 0.3;
+    // Hueco del aro en unidades del modelo, medido sobre los vértices. Antes
+    // se deducía de la caja (exterior menos dos veces su menor extensión) y
+    // subestimaba el hueco hasta un 20 %, lo que agrandaba la pieza en la
+    // misma proporción y de forma distinta en cada modelo.
+    final aro = _aro;
+    final huecoModelo = aro?.holeDiameter ?? 0;
+    final esAro = aro != null;
 
     // **Lo que tiene que encajar es el hueco alrededor del brazo**, no el
     // diámetro exterior contra una medida cualquiera. Escalando por el exterior
