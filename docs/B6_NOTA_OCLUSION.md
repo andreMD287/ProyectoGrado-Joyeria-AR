@@ -3,6 +3,12 @@
 **Frente:** B — Investigación y decisiones técnicas (spikes) · **Prioridad:** Baja · **Corresponde a:** Sprint 5
 **Tipo:** Análisis (sin implementación) · **Estado:** Borrador · **Última actualización:** 2026-08-09
 
+> ⚠️ **Documento superado — leer antes `B6_OCLUSION_ESTADO_Y_ALTERNATIVAS.md`.** La recomendación
+> preliminar de esta nota (§4, priorizar segmentación de persona) **se implementó, se midió y se
+> descartó**: la máscara no distingue el brazo y corre a 2,5 Hz. La oclusión que funciona hoy es por
+> buffer de profundidad con un proxy geométrico (ADR-16 / ADR-17). Esta nota se conserva porque es el
+> análisis previo que cerró la tarea B6, no porque su conclusión siga vigente.
+
 > Documento interno de trabajo. Panorama previo de las alternativas para resolver la **oclusión** de las piezas virtuales, es decir, que partes del cuerpo del usuario (una mano, el cabello, la mandíbula) tapen correctamente la joya cuando pasan por delante, en lugar de que la joya se dibuje siempre encima. Esta tarea es solo análisis; **no incluye implementación**.
 
 ---
