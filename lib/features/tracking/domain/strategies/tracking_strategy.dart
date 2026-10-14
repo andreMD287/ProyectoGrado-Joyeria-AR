@@ -1,6 +1,6 @@
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../entities/anchor_pose.dart';
-import '../entities/landmark.dart';
+import '../entities/landmark_frame.dart';
 
 /// Tipo de detector que requiere una estrategia.
 enum DetectorKind { hand, face, pose }
@@ -12,8 +12,12 @@ abstract interface class TrackingStrategy {
   JewelryCategory get category;
   DetectorKind get detectorKind;
 
-  /// Calcula la pose de anclaje a partir de los landmarks; `null` si no hay
+  /// Calcula la pose de anclaje a partir de lo detectado; `null` si no hay
   /// datos suficientes.
+  ///
+  /// [frame] trae los landmarks de imagen y, cuando el detector la provee, la
+  /// reconstrucción métrica 3D. Una estrategia que use la parte métrica debe
+  /// seguir funcionando si viene vacía: no todas las plataformas la entregan.
   ///
   /// [imageAspect] es el ancho/alto en píxeles del frame **ya rotado a
   /// vertical**, el mismo marco en el que están normalizados los landmarks.
@@ -22,7 +26,7 @@ abstract interface class TrackingStrategy {
   /// mismo en pantalla salvo que el frame sea cuadrado. Las estrategias que no
   /// estiman escala ni orientación pueden ignorarlo.
   AnchorPose? computeAnchor(
-    List<Landmark> landmarks, {
+    LandmarkFrame frame, {
     double imageAspect,
   });
 

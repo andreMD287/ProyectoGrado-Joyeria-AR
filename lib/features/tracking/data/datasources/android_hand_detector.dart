@@ -5,6 +5,7 @@ import 'package:hand_landmarker/hand_landmarker.dart' as hl;
 
 import '../../../../core/math/geometry.dart';
 import '../../domain/entities/landmark.dart';
+import '../../domain/entities/landmark_frame.dart';
 import 'landmark_detector.dart';
 
 /// Detector de manos en Android, basado en `hand_landmarker` (MediaPipe Hand
@@ -40,7 +41,7 @@ class AndroidHandDetector implements LandmarkDetector {
   hl.HandLandmarkerPlugin? _plugin;
   StreamSubscription<List<hl.Hand>>? _subscription;
 
-  List<Landmark> _latest = const [];
+  LandmarkFrame _latest = LandmarkFrame.empty;
   DateTime? _latestAt;
 
   /// Orientación del último frame entregado. Es constante durante una sesión
@@ -66,28 +67,45 @@ class AndroidHandDetector implements LandmarkDetector {
   }
 
   void _onHands(List<hl.Hand> hands) {
-    _latest = hands.isEmpty
-        ? const []
-        : [
-            for (final lm in hands.first.landmarks) _toUpright(lm, _orientation),
-          ];
+    if (hands.isEmpty) {
+      _latest = LandmarkFrame.empty;
+      _latestAt = DateTime.now();
+      return;
+    }
+
+    final hand = hands.first;
+    _latest = LandmarkFrame(
+      landmarks: [
+        for (final lm in hand.landmarks) _toUpright(lm, _orientation),
+      ],
+      // Los puntos metricos vienen en los ejes del buffer del sensor, igual que
+      // los normalizados, asi que necesitan la misma rotacion para quedar en el
+      // marco vertical que usa el resto del pipeline.
+      worldLandmarks: [
+        for (final lm in hand.worldLandmarks)
+          rotateVectorToUpright(
+            v: Vec3(lm.x, lm.y, lm.z),
+            rotationDegrees: _orientation,
+          ),
+      ],
+    );
     _latestAt = DateTime.now();
   }
 
   @override
-  Future<List<Landmark>> detect(
+  Future<LandmarkFrame> detect(
     CameraImage frame,
     int sensorOrientation,
   ) async {
     final plugin = _plugin;
-    if (plugin == null) return const [];
+    if (plugin == null) return LandmarkFrame.empty;
 
     _orientation = sensorOrientation;
     plugin.processFrame(frame, sensorOrientation);
 
     final at = _latestAt;
     if (at == null || DateTime.now().difference(at) > _staleAfter) {
-      return const [];
+      return LandmarkFrame.empty;
     }
     return _latest;
   }
@@ -107,7 +125,7 @@ class AndroidHandDetector implements LandmarkDetector {
     _subscription = null;
     _plugin?.dispose();
     _plugin = null;
-    _latest = const [];
+    _latest = LandmarkFrame.empty;
     _latestAt = null;
   }
 }

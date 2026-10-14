@@ -83,3 +83,7 @@ migrate_working_dir/
 
 # ─────────────────────────────────────────────────────────────
 # Nota: pubspec.lock SÍ se versiona (es una app, no una librería).
+
+# ─────────────────────────────────────────────────────────────
+# Notas locales de revisión (no se suben al repositorio)
+docs/_local/

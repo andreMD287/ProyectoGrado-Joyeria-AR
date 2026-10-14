@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 
 import '../../../../core/camera/camera_service.dart';
 import '../../../../core/filters/landmark_stabilizer.dart';
+import '../../../../core/math/geometry.dart';
 import '../../../../core/isolate/detection_isolate.dart';
 import '../../../../core/isolate/detection_runner.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
@@ -105,8 +107,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // subir la detección con el plugin 3.x ese retardo pasó a ser la
         // mitad del total, y con el triple de muestras se puede abrir el
         // filtro sin pagarlo en temblor: con 2.0 baja a ~80 ms en reposo.
+        // Medido con el brazo inmovil (2026-09-18): el ancla oscilaba 0,028 del
+        // ancho del frame, unos 25 px, y el filtro apenas la bajaba a 0,027
+        // porque estaba deliberadamente muy abierto para recortar retardo.
+        // Con el render 3D ese temblor se nota mucho mas que antes, asi que se
+        // cierra: se paga algo de retardo a cambio de que la pieza se quede
+        // quieta cuando el brazo lo esta.
         JewelryCategory.bracelet =>
-          OneEuroStabilizer(minCutoff: 2.0, beta: 1.0),
+          OneEuroStabilizer(minCutoff: 0.8, beta: 0.3),
         _ => stabilizer,
       };
 
@@ -114,6 +122,13 @@ class TrackingRepositoryImpl implements TrackingRepository {
   AngleStabilizer? _rollStabilizer;
   ScalarStabilizer? _scaleStabilizer;
   ScalarStabilizer? _yawStabilizer;
+
+  /// El eje 3D orienta la pieza y el ancho métrico decide su tamaño: sin
+  /// filtrar, el ruido de la reconstrucción métrica se ve como temblor de
+  /// orientación y como latido de escala.
+  LandmarkStabilizer? _axisStabilizer;
+  LandmarkStabilizer? _normalStabilizer;
+  ScalarStabilizer? _metricWidthStabilizer;
 
   @override
   Stream<TrackingFrame> trackingStream(JewelryCategory category) {
@@ -136,11 +151,22 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // detección; a los 3.5 Hz reales daba medio segundo de retardo y en
         // dispositivo el tamaño de la pieza no llegaba a cambiar a la vista.
         _rollStabilizer = AngleStabilizer(minCutoff: 1.5, beta: 0.5);
-        _scaleStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
+        // La escala oscilaba un 4% con el brazo quieto, y eso hace latir el
+        // tamano de la pieza. El tamano real cambia despacio, asi que admite
+        // mucho mas suavizado del que tenia.
+        _scaleStabilizer = ScalarStabilizer(minCutoff: 0.5, beta: 0.1);
         // Yaw de pulseras: no da vuelta completa (queda en ±90°), así que no
         // necesita el manejo circular de AngleStabilizer. Mismo afinado que
         // roll/escala como punto de partida, a validar en dispositivo.
         _yawStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
+        // Mucho mas suave que el resto: la `z` metrica de MediaPipe es la
+        // señal mas ruidosa que consume el pipeline, y aqui no mueve un punto
+        // sino la **orientacion** de la pieza, donde el ruido se ve como
+        // temblor con el brazo quieto (visto en dispositivo). Un antebrazo
+        // gira despacio, asi que filtrar fuerte no cuesta reactividad.
+        _axisStabilizer = OneEuroStabilizer(minCutoff: 0.4, beta: 0.05);
+        _normalStabilizer = OneEuroStabilizer(minCutoff: 0.4, beta: 0.05);
+        _metricWidthStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
         _lost = true;
         _lastDetectionMs = 0;
         final runner = _runnerFor(strategy.detectorKind);
@@ -173,9 +199,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
     try {
       final orientation =
           cameraService.controller?.description.sensorOrientation ?? 0;
-      final landmarks = await runner.detect(frame, orientation);
+      final detection = await runner.detect(frame, orientation);
       final anchor = strategy.computeAnchor(
-        landmarks,
+        detection,
         imageAspect: uprightAspect(frame, orientation),
       );
       final controller = _controller;
@@ -194,9 +220,12 @@ class TrackingRepositoryImpl implements TrackingRepository {
 
       _lost = false;
       _lastDetectionMs = now;
+
+      final s = _smooth(anchor, now / 1000.0);
+
       controller.add(TrackingFrame(
-        anchor: _smooth(anchor, now / 1000.0),
-        landmarks: landmarks,
+        anchor: s,
+        landmarks: detection.landmarks,
       ));
     } catch (_) {
       // Se descarta el frame con error para no interrumpir el stream.
@@ -210,6 +239,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
         (_sessionStabilizer ?? stabilizer).filter(anchor.position, tSeconds);
     final scale = anchor.scale;
     final yaw = anchor.yawRadians;
+    final axis = anchor.axis3D;
+    final normal = anchor.palmNormal3D;
+    final metricWidth = anchor.metricWidth;
     return AnchorPose(
       position: position,
       rollRadians:
@@ -217,8 +249,25 @@ class TrackingRepositoryImpl implements TrackingRepository {
               anchor.rollRadians,
       scale: scale == null ? null : _scaleStabilizer?.filter(scale, tSeconds),
       yawRadians: yaw == null ? null : _yawStabilizer?.filter(yaw, tSeconds),
+      // Se filtra componente a componente y se vuelve a normalizar: el filtro
+      // no conserva la longitud, y un eje que deje de ser unitario deformaria
+      // la pieza al orientarla.
+      axis3D: axis == null
+          ? null
+          : _normalize(_axisStabilizer?.filter(axis, tSeconds) ?? axis),
+      palmNormal3D: normal == null
+          ? null
+          : _normalize(_normalStabilizer?.filter(normal, tSeconds) ?? normal),
+      metricWidth: metricWidth == null
+          ? null
+          : _metricWidthStabilizer?.filter(metricWidth, tSeconds),
       confidence: anchor.confidence,
     );
+  }
+
+  static Vec3 _normalize(Vec3 v) {
+    final largo = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    return largo <= 0 ? v : Vec3(v.x / largo, v.y / largo, v.z / largo);
   }
 
   /// Al recuperar el tracking la mano suele reaparecer en otro sitio; arrancar
@@ -227,6 +276,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _sessionStabilizer?.reset();
     _rollStabilizer?.reset();
     _scaleStabilizer?.reset();
+    _axisStabilizer?.reset();
+    _normalStabilizer?.reset();
+    _metricWidthStabilizer?.reset();
     _yawStabilizer?.reset();
   }
 

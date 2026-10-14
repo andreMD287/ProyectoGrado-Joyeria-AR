@@ -1,0 +1,137 @@
+# B7 — Spike: motor de render 3D con fondo transparente (`three_js`)
+
+**Frente:** B — Spikes de investigación · **Prioridad:** Alta · **Alimenta:** ADR-16 (migración del render de la prueba virtual)
+**Tipo:** Técnica (prueba de concepto ejecutable en dispositivo) · **Estado:** Resuelto — motor validado · **Última actualización:** 2026-09-18
+
+> **Resuelto: el motor sirve.** La prueba virtual se percibe como una calcomanía superpuesta y no como una joya puesta sobre el cuerpo. La causa está en el render: `model_viewer_plus` dibuja el modelo desde **su propia cámara** dentro de un WebView y el resultado se compone como un *sprite* 2D, sin relación de perspectiva con la extremidad real. Este spike verifica si `three_js` puede sustituirlo, y su pregunta decisiva es una sola: **¿puede renderizar con fondo transparente, de modo que la cámara se vea a través?** Si no, el motor no sirve y no vale la pena seguir.
+
+---
+
+## 1. Qué contiene
+
+Aplicación Flutter mínima e independiente del producto:
+
+```
+spikes/B7-motor-render/
+├── lib/
+│   └── main.dart      # fondo de franjas + vista three_js con alpha + carga de los GLB del catálogo
+└── android/           # andamiaje de Flutter (requiere build nativo: ver §4)
+```
+
+El fondo son **franjas de colores fuertes** dibujadas con `CustomPaint`, a propósito: o se ven a través del render 3D, o no se ven. No admite interpretación.
+
+### Cómo reproducir
+
+Los modelos **no se versionan aquí** (ya están en el repositorio, no se duplican):
+
+```bash
+cd spikes/B7-motor-render
+mkdir -p assets && cp ../../assets/models/*.glb assets/
+flutter pub get
+flutter run --profile -d <dispositivo>
+```
+
+---
+
+## 2. Resultado
+
+Verificado en dispositivo físico (Galaxy A15, Android 15):
+
+| Pregunta | Resultado |
+|---|---|
+| ¿Renderiza con fondo transparente sobre widgets de Flutter? | **Sí.** `Settings(alpha: true, clearAlpha: 0.0)` |
+| ¿Dibuja en `Texture` o en *platform view*? | **`Texture`** (`FlutterAngleTexture`) — compone como un widget normal |
+| ¿Funciona con Flutter 3.41.7, la versión que fija el CI? | **Sí**, sin subir el SDK |
+| ¿Carga los GLB del catálogo? | **5 de 7** (ver §3) |
+| Calidad de imagen | PBR con *metalness*/*roughness*, reflejos especulares y antialiasing |
+| ¿Convive con el stream de cámara? | **Sí.** `CameraPreview` detrás y render encima, ambos visibles |
+| Tasa de render con la cámara corriendo | **56,6 FPS**, sostenidos también al mover la cámara |
+
+Que dibuje en un `Texture` y no en una *platform view* resuelve de paso un problema que arrastraba el WebView: su composición asíncrona hacía que la joya "nadara" respecto de la imagen de cámara.
+
+---
+
+## 3. Trampas encontradas (y cómo se resuelven)
+
+### 3.1. El visor cachea su tamaño en el primer *build*
+
+`ThreeJS` lee `MediaQuery` la primera vez que se construye y **guarda ese tamaño para siempre** (`initSize` retorna temprano si `screenSize != null`). En arranque en frío ese primer build ocurre antes de que lleguen las medidas de la ventana: el tamaño queda en 0×0 y la creación de la textura falla con
+
+```
+PlatformException(Invalid dimensions, Width and height must be positive)
+```
+
+**Solución aplicada:** no crear el visor en `initState`, sino tras conocer las restricciones reales (`LayoutBuilder` + `addPostFrameCallback`), pasándole `size` explícito. Es además el patrón que necesita el producto, donde el 3D va dentro de una tarjeta y no a pantalla completa.
+
+### 3.2. El cargador glTF rompe con `KHR_materials_specular`
+
+Dos piezas del catálogo fallan con `type 'int' is not a subtype of type 'double?'`:
+
+| Modelo | Carga |
+|---|---|
+| `collar-cadena-01.glb`, `cartier.glb`, `_placeholder.glb`, `Collar1_Juanes.glb`, `Collar2_Juanes.glb` | ✅ |
+| `arete_perla.glb`, `pulsera_perlas_basica.glb` | ❌ |
+
+**Causa:** ambas usan la extensión `KHR_materials_specular` con `specularFactor: 0`. Blender exporta el cero como **entero**, y el cargador lo asigna crudo a un campo tipado `double?`:
+
+```dart
+// three_js_advanced_loaders/lib/gltf/gltf_extensions.dart:144
+materialParams['specularIntensity'] = extension['specularFactor'] ?? 1.0;
+```
+
+No es un problema general de `int`/`double`: `Collar1_Juanes.glb` trae `transmissionFactor: 1` (también entero) y carga sin problema.
+
+**Dos salidas:** parchear el cargador (`(… as num?)?.toDouble()`, una línea) o reexportar esas dos piezas con un valor no entero.
+
+### 3.3. `permission_handler` 13+ no compila con este andamiaje
+
+Al añadir `permission_handler` al spike, pub resolvió la 13.0.2 (con `permission_handler_android` 14.1.0) y el build falló con errores de compilación del script Gradle (`kotlin { compilerOptions { … } }`, `srcDirs` obsoleto). La aplicación va en 11.4.0 / 12.1.0 y funciona. **Restricción a tener presente:** subir `permission_handler` romperá el build hasta que se actualice el andamiaje de Gradle/Kotlin.
+
+En el spike se quitó la dependencia: el plugin `camera` ya pide el permiso al inicializar en Android.
+
+### 3.4. Exige cadena de compilación nativa
+
+`three_js` depende de `flutter_angle`, que compila ANGLE con CMake y NDK. Sin la versión exacta el build falla con:
+
+```
+[CXX1300] CMake '3.31.4' was not found in SDK, PATH, or by cmake.dir property
+```
+
+Se instala con `sdkmanager --install "cmake;3.31.4"`. **El CI tendrá que hacerlo también**, o el build romperá ahí.
+
+---
+
+## 3.5. Qué se probó después aquí (resultados negativos)
+
+Esta misma app sirvió de banco para dos preguntas posteriores sobre **de dónde sacar la geometría del brazo**. `lib/main.dart` conserva el último experimento; lo que importa son los hallazgos.
+
+### Segmentación de persona — **no sirve**
+
+`google_mlkit_selfie_segmentation` 0.11.0 (la 0.12+ exige Dart `^3.12`, fuera del SDK que fija el CI). Falla por dos motivos independientes:
+
+- **No distingue el brazo.** La máscara cubre casi toda la escena —escritorio, ratón, suelo— porque el modelo está entrenado para *selfies*: persona de frente sobre fondo lejano. Un brazo sobre un escritorio visto por la cámara trasera no se le parece.
+- **Corre a 2,5 Hz**, cuatro veces por debajo del presupuesto de detección (ADR-12).
+
+### Detección de pose para el eje del antebrazo — **no sirve, y engaña**
+
+`google_mlkit_pose_detection`, que ya es dependencia del proyecto para collares, entrega muñeca y codo: con esos dos puntos el eje del antebrazo dejaría de extrapolarse desde la mano.
+
+Devuelve una pose de 33 puntos a 15 Hz, pero **todos caen amontonados sobre la mano**: los que marca como muñeca y codo aterrizan en los dedos. El modelo encaja un cuerpo entero dentro de la mano.
+
+Lo peligroso es que los reporta con **`likelihood` de 0,99**. Esa métrica **no sirve como filtro de validez** en este caso: es alta sobre puntos completamente inventados.
+
+### Consecuencia para el producto
+
+Ningún detector disponible ve el antebrazo: Hands termina en la muñeca, Pose lo alucina y la segmentación no lo separa del fondo. La dirección del antebrazo se seguirá extrapolando desde la mano, con el error angular que eso implica cuando la muñeca se dobla (medido: 95° estimados contra un brazo que bajaba hacia la derecha).
+
+La mitigación aplicada es acortar la extrapolación: `BraceletStrategy.forearmOffset` baja de 0,45 a 0,20, porque el desvío lateral es proporcional a esa distancia. Medido sobre captura, el desvío del ancla respecto al eje del brazo pasó de **25 px a ~5 px**.
+
+---
+
+## 4. Recomendación
+
+Adoptar `three_js` como motor de render de la prueba virtual. La justificación completa y las alternativas descartadas (`model_viewer_plus`, `flutter_scene`, Depth API de ARCore/ARKit) están en **ADR-16** del SDD, que es la fuente única de las decisiones de arquitectura.
+
+La tasa medida deja margen de sobra: el presupuesto de detección es de ~10 FPS (ADR-12), así que el render no es el cuello de botella.
+
+Lo que este spike **no** cubre y queda para la migración: alimentar la cámara virtual con la pose de la muñeca y añadir el *occluder* de la extremidad para la oclusión por profundidad.

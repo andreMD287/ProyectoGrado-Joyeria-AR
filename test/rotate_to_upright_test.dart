@@ -78,4 +78,75 @@ void main() {
       expect(b.y, closeTo(esperado.y, 1e-9));
     });
   });
+
+  group('rotateVectorToUpright', () {
+    test('sin rotacion deja el vector igual', () {
+      final v = rotateVectorToUpright(
+        v: const Vec3(0.03, -0.02, 0.01),
+        rotationDegrees: 0,
+      );
+      expect(v.x, closeTo(0.03, 1e-9));
+      expect(v.y, closeTo(-0.02, 1e-9));
+      expect(v.z, closeTo(0.01, 1e-9));
+    });
+
+    test('no traslada: el vector nulo sigue en el origen', () {
+      // Es la diferencia con rotateNormalizedToUpright, cuyos terminos `1 - …`
+      // reubican dentro del cuadrado [0,1]. Aplicados a metros, moverian el
+      // punto un metro entero.
+      for (final grados in [0, 90, 180, 270]) {
+        final v = rotateVectorToUpright(
+          v: Vec3.zero,
+          rotationDegrees: grados,
+        );
+        expect(v.x, closeTo(0, 1e-9), reason: 'a $grados grados');
+        expect(v.y, closeTo(0, 1e-9), reason: 'a $grados grados');
+      }
+    });
+
+    test('a 90 grados, lo que apunta a la derecha pasa a apuntar abajo', () {
+      final v = rotateVectorToUpright(
+        v: const Vec3(1, 0, 0),
+        rotationDegrees: 90,
+      );
+      expect(v.x, closeTo(0, 1e-9));
+      expect(v.y, closeTo(1, 1e-9));
+    });
+
+    test('coincide con la parte lineal de rotateNormalizedToUpright', () {
+      // Se compara el desplazamiento entre dos puntos: al restarlos, la
+      // traslacion de la version normalizada se cancela y debe quedar
+      // exactamente esta rotacion.
+      for (final grados in [0, 90, 180, 270]) {
+        final a = rotateNormalizedToUpright(x: 0.5, y: 0.5, rotationDegrees: grados);
+        final b = rotateNormalizedToUpright(x: 0.7, y: 0.6, rotationDegrees: grados);
+        final v = rotateVectorToUpright(
+          v: const Vec3(0.2, 0.1, 0),
+          rotationDegrees: grados,
+        );
+
+        expect(v.x, closeTo(b.x - a.x, 1e-9), reason: 'a $grados grados');
+        expect(v.y, closeTo(b.y - a.y, 1e-9), reason: 'a $grados grados');
+      }
+    });
+
+    test('el eje z no cambia, porque se gira alrededor de el', () {
+      for (final grados in [0, 90, 180, 270]) {
+        final v = rotateVectorToUpright(
+          v: const Vec3(0.1, 0.2, 0.33),
+          rotationDegrees: grados,
+        );
+        expect(v.z, closeTo(0.33, 1e-9), reason: 'a $grados grados');
+      }
+    });
+
+    test('cuatro giros de 90 grados vuelven al vector original', () {
+      var v = const Vec3(0.12, -0.05, 0.02);
+      for (var i = 0; i < 4; i++) {
+        v = rotateVectorToUpright(v: v, rotationDegrees: 90);
+      }
+      expect(v.x, closeTo(0.12, 1e-9));
+      expect(v.y, closeTo(-0.05, 1e-9));
+    });
+  });
 }

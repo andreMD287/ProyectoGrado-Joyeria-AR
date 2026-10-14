@@ -18,7 +18,9 @@ Repositorio oficial del proyecto de grado (Grupo 7, 2026).
 
 ## Estado actual
 
-Validado en dispositivo físico Android (sin ARCore): la prueba virtual detecta y ancla en tiempo real las tres categorías (muñeca, lóbulo, hombros) y las renderiza sobre la vista de cámara en vivo, con la detección corriendo en un isolate dedicado para no bloquear la UI. Pendiente: tracking en iOS (andamiaje listo, sin validar en iPhone), modelos GLB reales del catálogo (se usa un modelo de referencia mientras tanto) y el protocolo de precisión de detección en distintas condiciones. El detalle completo, tarea por tarea, está en [`docs/TAREAS_PENDIENTES.md`](docs/TAREAS_PENDIENTES.md).
+Validado en dispositivo físico Android (sin ARCore): la prueba virtual detecta y ancla en tiempo real las tres categorías (muñeca, lóbulo, hombros), con la detección corriendo en un isolate dedicado para no bloquear la UI. El render ya no es un *sprite* 2D sobre la cámara: es una escena 3D con cámara en perspectiva propia y buffer de profundidad (ADR-16), de donde sale la **oclusión** de la pieza por la extremidad que la lleva (ADR-17).
+
+Pendiente: la oclusión solo funciona en **pulseras** —aretes y collares aún se dibujan siempre por delante—, el ajuste del aro sobre el brazo no se da por bueno y sus constantes antropométricas están calibradas sobre una sola persona; el motor de render solo está verificado en Android; falta tracking en iOS (andamiaje listo, sin validar en iPhone), los modelos GLB reales del catálogo y el protocolo de precisión de detección. El estado de la oclusión, con alternativas y estimaciones, está en [`docs/B6_OCLUSION_ESTADO_Y_ALTERNATIVAS.md`](docs/B6_OCLUSION_ESTADO_Y_ALTERNATIVAS.md); el detalle tarea por tarea, en [`docs/TAREAS_PENDIENTES.md`](docs/TAREAS_PENDIENTES.md).
 
 ## Arquitectura
 
@@ -38,6 +40,12 @@ flutter pub get
 flutter run --debug        # dispositivo físico (la AR no corre en emulador/simulador)
 ```
 
+**Android — requisito del build nativo.** La prueba virtual renderiza con `three_js`, que depende de `flutter_angle` y compila ANGLE con CMake y el NDK. Sin esa versión exacta el build falla con `[CXX1300] CMake '3.31.4' was not found in SDK, PATH, or by cmake.dir property`. Se instala una sola vez:
+
+```bash
+"$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "cmake;3.31.4"
+```
+
 En iOS, tras cambios en dependencias: `pod install` desde `ios/`.
 
 ## Estructura del repositorio
@@ -53,6 +61,7 @@ En iOS, tras cambios en dependencias: `pod install` desde `ios/`.
 |---|---|
 | [`docs/SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md`](docs/SDD_2.3_ARQUITECTURA_DEL_SISTEMA.md) | SDD §2.3: Flutter vs. arquitectura propia, patrones, tácticas y ADR. |
 | [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) | Arquitectura técnica interna (carpetas, pipeline, adopción). |
+| [`docs/B6_OCLUSION_ESTADO_Y_ALTERNATIVAS.md`](docs/B6_OCLUSION_ESTADO_Y_ALTERNATIVAS.md) | Oclusión: alternativas evaluadas, estado actual y trabajo futuro estimado. |
 | [`docs/TAREAS_PENDIENTES.md`](docs/TAREAS_PENDIENTES.md) | Tareas preparatorias (frentes A–E). |
 | [`docs/D1_PIPELINE_DIGITALIZACION.md`](docs/D1_PIPELINE_DIGITALIZACION.md) | Pipeline de digitalización de piezas (GLB/PBR). |
 | [`docs/D3_ESTRUCTURA_CATALOGO.md`](docs/D3_ESTRUCTURA_CATALOGO.md) | Estructura del catálogo y metadatos. |

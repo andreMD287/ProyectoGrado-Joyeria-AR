@@ -188,6 +188,8 @@ Corresponde al alcance del Sprint 5, pero representa un riesgo técnico consider
 **Asignado a:** _(pendiente)_
 
 > **Estado (2026-08-10): ✅ Hecho.** Se redactó la nota de análisis (`docs/B6_NOTA_OCLUSION.md`) comparando segmentación de persona (ML Kit/MediaPipe) vs. APIs de profundidad (ARCore/ARKit), con recomendación preliminar de priorizar segmentación. **Sirve para** llegar al Sprint 5 con el panorama de oclusión ya explorado.
+
+> **Actualización (2026-10-01).** La recomendación de esa nota **no sobrevivió a la implementación**: la segmentación se probó en el spike B7 y se descartó (no distingue el brazo y corre a 2,5 Hz). La oclusión que funciona hoy —solo en pulseras— es por buffer de profundidad con un proxy geométrico (ADR-16 / ADR-17). El estado completo, las 11 alternativas con su veredicto, el contraste contra la planeación y las estimaciones del trabajo que falta están en `docs/B6_OCLUSION_ESTADO_Y_ALTERNATIVAS.md`.
  
 ---
  

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/platform/platform_channels.dart';
 import '../../domain/entities/landmark.dart';
+import '../../domain/entities/landmark_frame.dart';
 import 'landmark_detector.dart';
 
 /// Detector de manos en iOS. `hand_landmarker` no soporta iOS (usa JNI), por lo
@@ -28,11 +29,11 @@ class IosHandDetector implements LandmarkDetector {
   }
 
   @override
-  Future<List<Landmark>> detect(
+  Future<LandmarkFrame> detect(
     CameraImage frame,
     int sensorOrientation,
   ) async {
-    if (frame.planes.isEmpty) return const [];
+    if (frame.planes.isEmpty) return LandmarkFrame.empty;
     final plane = frame.planes.first;
 
     final result = await _channel.invokeMethod<List<Object?>>('detect', {
@@ -42,10 +43,15 @@ class IosHandDetector implements LandmarkDetector {
       'bytesPerRow': plane.bytesPerRow,
       'rotation': sensorOrientation,
     });
-    if (result == null) return const [];
+    if (result == null) return LandmarkFrame.empty;
 
-    return mapVisionLandmarks(
-      result.cast<num>().map((n) => n.toDouble()).toList(),
+    // Apple Vision no entrega reconstruccion metrica, asi que la parte 3D
+    // queda vacia: es una diferencia de capacidad entre plataformas, no un
+    // fallo del frame.
+    return LandmarkFrame(
+      landmarks: mapVisionLandmarks(
+        result.cast<num>().map((n) => n.toDouble()).toList(),
+      ),
     );
   }
 

@@ -2,16 +2,21 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/anchor_pose.dart';
+import 'package:jewelry_ar/core/math/geometry.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
+import 'package:jewelry_ar/features/tracking/domain/entities/landmark_frame.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/bracelet_strategy.dart';
 
 /// Construye los 21 landmarks de MediaPipe Hands con todo en el origen salvo
 /// los tres que usa la estrategia.
-List<Landmark> hand({
+/// [world] son los 21 puntos metricos (en metros). Solo se usan los tres que
+/// mira la estrategia; el resto va al origen.
+LandmarkFrame hand({
   required (double, double) wrist,
   required (double, double) indexMcp,
   required (double, double) pinkyMcp,
   (double, double)? thumbTip,
+  ({Vec3 wrist, Vec3 indexMcp, Vec3 pinkyMcp})? world,
 }) {
   final points = List<Landmark>.filled(21, const Landmark(0, 0, 0));
   points[BraceletStrategy.wristLandmark] = Landmark(wrist.$1, wrist.$2, 0);
@@ -23,7 +28,15 @@ List<Landmark> hand({
     points[BraceletStrategy.thumbTipLandmark] =
         Landmark(thumbTip.$1, thumbTip.$2, 0);
   }
-  return points;
+  final metricos = <Vec3>[];
+  if (world != null) {
+    metricos.addAll(List<Vec3>.filled(21, Vec3.zero));
+    metricos[BraceletStrategy.wristLandmark] = world.wrist;
+    metricos[BraceletStrategy.indexMcpLandmark] = world.indexMcp;
+    metricos[BraceletStrategy.pinkyMcpLandmark] = world.pinkyMcp;
+  }
+
+  return LandmarkFrame(landmarks: points, worldLandmarks: metricos);
 }
 
 void main() {
@@ -48,8 +61,8 @@ void main() {
         ),
       )!;
 
-      // muneca.y + (muneca.y - palma.y) * forearmOffset = 0.6 + 0.2 * 0.45
-      expect(anchor.position.y, closeTo(0.69, 1e-9));
+      // muneca.y + (muneca.y - palma.y) * forearmOffset = 0.6 + 0.2 * 0.20
+      expect(anchor.position.y, closeTo(0.64, 1e-9));
       expect(anchor.position.x, closeTo(0.5, 1e-9));
     });
 
@@ -315,7 +328,7 @@ void main() {
 
       // La mano sale del encuadre: varios frames sin landmarks suficientes.
       for (var i = 0; i < 3; i++) {
-        s.computeAnchor(const []);
+        s.computeAnchor(LandmarkFrame.empty);
       }
 
       // Reaparece con una palma mas angosta que la calibrada antes de salir.
@@ -352,11 +365,193 @@ void main() {
     });
   });
 
+  group('geometria 3D desde los landmarks metricos', () {
+    // Mano de tamano plausible: 9 cm de la muneca al nudillo del indice y
+    // 4 cm entre nudillos, que es lo que devuelve MediaPipe en dispositivo.
+    ({Vec3 wrist, Vec3 indexMcp, Vec3 pinkyMcp}) manoMetrica({
+      double wristZ = 0,
+    }) =>
+        (
+          wrist: Vec3(0, 0.09, wristZ),
+          indexMcp: Vec3(-0.02, 0, 0),
+          pinkyMcp: Vec3(0.02, 0, 0),
+        );
+
+    test('sin puntos metricos no inventa eje ni ancho', () {
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+        ),
+      )!;
+
+      expect(anchor.axis3D, isNull);
+      expect(anchor.metricWidth, isNull);
+    });
+
+    test('el ancho metrico es la distancia real entre nudillos', () {
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(),
+        ),
+      )!;
+
+      // 4 cm entre los dos nudillos.
+      expect(anchor.metricWidth, closeTo(0.04, 1e-9));
+    });
+
+    test('el eje 3D es unitario', () {
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(wristZ: 0.05),
+        ),
+      )!;
+
+      final eje = anchor.axis3D!;
+      final largo =
+          math.sqrt(eje.x * eje.x + eje.y * eje.y + eje.z * eje.z);
+      expect(largo, closeTo(1.0, 1e-9));
+    });
+
+    test('el eje apunta de la palma hacia el codo', () {
+      // La muneca esta 9 cm "por debajo" de los nudillos en el eje y, que en
+      // este marco crece hacia abajo: el antebrazo baja.
+      final anchor = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(),
+        ),
+      )!;
+
+      expect(anchor.axis3D!.y, greaterThan(0.9));
+      expect(anchor.axis3D!.x, closeTo(0, 1e-9));
+    });
+
+    test('recoge la profundidad, pero amortiguada', () {
+      // Misma proyeccion en la imagen, distinta inclinacion real: es el caso
+      // que la heuristica 2D no distingue y esta si. La profundidad se refleja,
+      // pero atenuada a proposito: medida en dispositivo es la componente con
+      // diez veces mas ruido que las otras, y tomarla cruda hacia temblar la
+      // pieza (ver _depthDamping).
+      final plano = strategy.computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(),
+        ),
+      )!;
+
+      final inclinado = BraceletStrategy().computeAnchor(
+        hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: manoMetrica(wristZ: 0.09),
+        ),
+      )!;
+
+      expect(plano.axis3D!.z, closeTo(0, 1e-9));
+      // Sin amortiguar, un antebrazo a 45 grados daria z ~0,71.
+      expect(inclinado.axis3D!.z, greaterThan(0.1));
+      expect(inclinado.axis3D!.z, lessThan(0.4));
+      // La direccion en el plano de la imagen sigue dominando, que es la que
+      // el detector si resuelve bien.
+      expect(inclinado.axis3D!.y, greaterThan(inclinado.axis3D!.z * 2));
+    });
+  });
+
+  group('tamano de la pieza', () {
+    // Mano metrica de referencia, en metros: 9 cm de la muneca al plano de los
+    // nudillos y 4 cm entre ellos.
+    const wristW = Vec3(0, 0.09, 0);
+    const indexW = Vec3(-0.02, 0, 0);
+    const pinkyW = Vec3(0.02, 0, 0);
+
+    /// Proyecta una mano metrica a la imagen con una escala conocida. Es lo que
+    /// hace la camara, y es lo que el algoritmo tiene que recuperar: si los
+    /// landmarks de imagen y los metricos no describen la misma mano, la
+    /// prueba mide una incoherencia inventada y no el comportamiento real.
+    LandmarkFrame proyectar(
+      Vec3 w,
+      Vec3 i,
+      Vec3 p, {
+      required double escala,
+    }) {
+      (double, double) img(Vec3 v) => (0.5 + v.x * escala, 0.5 + v.y * escala);
+      return hand(
+        wrist: img(w),
+        indexMcp: img(i),
+        pinkyMcp: img(p),
+        world: (wrist: w, indexMcp: i, pinkyMcp: p),
+      );
+    }
+
+    test('el tamano sale del ancho de palma medido en la imagen', () {
+      final anchor = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 2.0),
+      )!;
+
+      // 4 cm de palma proyectados con escala 2.0.
+      expect(anchor.scale, closeTo(0.04 * 2.0, 1e-9));
+    });
+
+    test('el tamano sigue al escorzo, y eso se acepta a conciencia', () {
+      // Con la mano pronada 60 grados la palma se ve la mitad de ancha, y la
+      // pieza encoge en consecuencia.
+      //
+      // Se intento evitarlo con la reconstruccion metrica —primero por escala
+      // absoluta, luego por proporciones— y las dos veces salio peor: medido en
+      // dispositivo, el ancho metrico de la palma varia un 65% entre palma
+      // arriba y palma abajo, cuando es una distancia 3D que no puede cambiar.
+      // En esas mismas muestras el ancho en imagen solo variaba un 4%, porque
+      // en ambas poses el plano de la palma queda casi paralelo a la camara.
+      //
+      // Asi que se prefiere la senal estable aunque no sea invariante: encoge
+      // en poses de canto, que son ademas las que menos se usan para probarse
+      // una pulsera.
+      const cos60 = 0.5;
+      const sin60 = 0.8660254037844387;
+      Vec3 girar(Vec3 v) => Vec3(v.x * cos60, v.y, -v.x * sin60);
+
+      final frontal = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 2.0),
+      )!;
+      final girada = BraceletStrategy().computeAnchor(
+        proyectar(wristW, girar(indexW), girar(pinkyW), escala: 2.0),
+      )!;
+
+      expect(girada.scale!, closeTo(frontal.scale! * cos60, 1e-6));
+    });
+
+    test('la pieza cambia de tamano con la distancia', () {
+      final lejos = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 1.5),
+      )!;
+      final cerca = BraceletStrategy().computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 3.0),
+      )!;
+
+      expect(cerca.scale!, closeTo(lejos.scale! * 2, 1e-6));
+    });
+  });
+
   group('rechazo de detecciones malas', () {
     test('sin landmarks suficientes devuelve null', () {
-      expect(strategy.computeAnchor(const []), isNull);
+      expect(strategy.computeAnchor(LandmarkFrame.empty), isNull);
       expect(
-        strategy.computeAnchor(List.filled(10, const Landmark(0, 0, 0))),
+        strategy.computeAnchor(
+          LandmarkFrame(landmarks: List.filled(10, const Landmark(0, 0, 0))),
+        ),
         isNull,
       );
     });
@@ -385,4 +580,5 @@ void main() {
       expect(anchor, isNull);
     });
   });
+
 }

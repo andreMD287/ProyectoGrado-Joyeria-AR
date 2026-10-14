@@ -7,7 +7,7 @@ import '../../features/tracking/data/datasources/face_detector_datasource.dart';
 import '../../features/tracking/data/datasources/ios_hand_detector.dart';
 import '../../features/tracking/data/datasources/landmark_detector.dart';
 import '../../features/tracking/data/datasources/pose_detector_datasource.dart';
-import '../../features/tracking/domain/entities/landmark.dart';
+import '../../features/tracking/domain/entities/landmark_frame.dart';
 import '../../features/tracking/domain/strategies/tracking_strategy.dart'
     show DetectorKind;
 
@@ -28,8 +28,8 @@ import '../../features/tracking/domain/strategies/tracking_strategy.dart'
 abstract interface class DetectionRunner {
   Future<void> start(DetectorKind kind);
 
-  /// Entrega un frame y devuelve los landmarks disponibles.
-  Future<List<Landmark>> detect(CameraImage frame, int sensorOrientation);
+  /// Entrega un frame y devuelve lo detectado disponible.
+  Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation);
 
   Future<void> dispose();
 }
@@ -75,14 +75,14 @@ class InlineDetectionRunner implements DetectionRunner {
   }
 
   @override
-  Future<List<Landmark>> detect(CameraImage frame, int sensorOrientation) async {
+  Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation) async {
     final detector = _detector;
-    if (detector == null) return const [];
+    if (detector == null) return LandmarkFrame.empty;
     try {
       return await detector.detect(frame, sensorOrientation);
     } catch (_) {
       // Un frame con error no debe interrumpir la sesión.
-      return const [];
+      return LandmarkFrame.empty;
     }
   }
 
