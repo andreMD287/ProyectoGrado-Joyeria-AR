@@ -800,6 +800,7 @@ class _CameraOverlay extends ConsumerWidget {
                   piece: piece,
                   anchor: anchor,
                   fit: fit,
+                  showOccluder: showDebug,
                 ),
 
                 if (showDebug)
@@ -908,11 +909,13 @@ class _ModelOverlay extends ConsumerWidget {
   final JewelryPiece piece;
   final AnchorPose? anchor;
   final PreviewFit fit;
+  final bool showOccluder;
 
   const _ModelOverlay({
     required this.piece,
     required this.anchor,
     required this.fit,
+    this.showOccluder = false,
   });
 
   /// Tamano en pantalla cuando la estrategia todavia no estima escala
@@ -1005,6 +1008,7 @@ class _ModelOverlay extends ConsumerWidget {
           limbDiameterPx: _limbDiameterPx(fit, scale),
           staticYawDeg: piece.orientacionYawDeg,
           rollOffset: _rollOffset,
+          showOccluder: showOccluder,
         ),
       ),
     );

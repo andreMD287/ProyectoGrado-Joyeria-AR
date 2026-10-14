@@ -51,6 +51,12 @@ class JewelryScene extends StatefulWidget {
   /// `null` en piezas que no rodean nada (aretes): entonces no hay oclusión.
   final double? limbDiameterPx;
 
+  /// Dibuja el proxy de oclusión en alambre rojo. Es la herramienta para
+  /// juzgar en dispositivo si el proxy calza con el brazo real: sin verlo, un
+  /// proxy demasiado fino o grueso solo se nota como cuentas que aparecen o
+  /// desaparecen donde no deben.
+  final bool showOccluder;
+
   const JewelryScene({
     super.key,
     required this.modelBytes,
@@ -60,6 +66,7 @@ class JewelryScene extends StatefulWidget {
     this.limbDiameterPx,
     this.staticYawDeg = 0,
     this.rollOffset = 0,
+    this.showOccluder = false,
   });
 
   @override
@@ -103,6 +110,10 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// tapado por el propio buffer. Es la oclusión real, con silueta curva, en
   /// lugar de un recorte plano sobre la imagen.
   three.Object3D? _occluder;
+
+  /// Silueta visible del proxy, solo para diagnóstico (ver
+  /// [JewelryScene.showOccluder]). Es hija del proxy, así que hereda su pose.
+  three.Object3D? _occluderWire;
 
   /// Largo del proxy en diámetros: basta con que sobresalga por ambos lados
   /// para tapar en cualquier inclinación.
@@ -198,6 +209,23 @@ class _JewelrySceneState extends State<JewelryScene> {
     viewer.scene.add(occluder);
     _occluder = occluder;
 
+    // Sin prueba de profundidad y dibujada al final: tiene que verse aunque la
+    // pieza o el propio proxy estén delante.
+    final wire = three.Mesh(
+      occluder.geometry,
+      three.MeshBasicMaterial.fromMap({
+        'color': 0xff2020,
+        'wireframe': true,
+        'transparent': true,
+        'opacity': 0.55,
+        'depthTest': false,
+        'depthWrite': false,
+      }),
+    )
+      ..renderOrder = 10
+      ..visible = widget.showOccluder;
+    occluder.add(wire);
+    _occluderWire = wire;
 
     final gltf = await three.GLTFLoader().fromBytes(widget.modelBytes);
     final model = gltf?.scene;
@@ -278,6 +306,7 @@ class _JewelrySceneState extends State<JewelryScene> {
   @override
   void didUpdateWidget(covariant JewelryScene oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _occluderWire?.visible = widget.showOccluder;
     _applyAnchor();
   }
 
