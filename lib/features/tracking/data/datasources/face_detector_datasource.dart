@@ -19,7 +19,13 @@ import 'landmark_detector.dart';
 /// orejas de ML Kit parpadean y hacen saltar el anclaje de un lado a otro.
 class FaceDetectorDataSource implements LandmarkDetector {
   final FaceDetector _detector = FaceDetector(
-    options: FaceDetectorOptions(enableLandmarks: true),
+    // `accurate` es lo que expone `headEulerAngleX` (cabeceo); en `fast` (el
+    // default) ML Kit solo garantiza yaw/roll. Cuesta algo de latencia por
+    // frame — a medir en dispositivo si se nota (ver B5).
+    options: FaceDetectorOptions(
+      enableLandmarks: true,
+      performanceMode: FaceDetectorMode.accurate,
+    ),
   );
 
   @override
@@ -36,13 +42,15 @@ class FaceDetectorDataSource implements LandmarkDetector {
     final faces = await _detector.processImage(input);
     if (faces.isEmpty) return LandmarkFrame.empty;
 
-    // ML Kit Face no reconstruye en metros; solo landmarks de imagen.
+    final face = faces.first;
+    // ML Kit Face no reconstruye en metros; solo landmarks de imagen y,
+    // aparte, los ángulos de cabeza (no son parte de ningún landmark).
     return LandmarkFrame(
-      landmarks: _mapFace(
-        faces.first,
-        frame.width,
-        frame.height,
-        sensorOrientation,
+      landmarks: _mapFace(face, frame.width, frame.height, sensorOrientation),
+      headEulerAnglesDeg: Vec3(
+        face.headEulerAngleX ?? 0,
+        face.headEulerAngleY ?? 0,
+        face.headEulerAngleZ ?? 0,
       ),
     );
   }

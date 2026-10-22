@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jewelry_ar/core/math/geometry.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark_frame.dart';
 import 'package:jewelry_ar/features/tracking/domain/strategies/earring_strategy.dart';
@@ -12,18 +13,22 @@ LandmarkFrame faceLandmarks({
   Landmark? rightCheek,
   Landmark? leftBBoxLobe,
   Landmark? rightBBoxLobe,
+  Vec3? headEulerAnglesDeg,
 }) {
   const absent = Landmark(0, 0, 0, visibility: 0);
-  return LandmarkFrame(landmarks: [
-    leftEar ?? absent,
-    rightEar ?? absent,
-    leftEye ?? absent,
-    rightEye ?? absent,
-    leftCheek ?? absent,
-    rightCheek ?? absent,
-    leftBBoxLobe ?? absent,
-    rightBBoxLobe ?? absent,
-  ]);
+  return LandmarkFrame(
+    landmarks: [
+      leftEar ?? absent,
+      rightEar ?? absent,
+      leftEye ?? absent,
+      rightEye ?? absent,
+      leftCheek ?? absent,
+      rightCheek ?? absent,
+      leftBBoxLobe ?? absent,
+      rightBBoxLobe ?? absent,
+    ],
+    headEulerAnglesDeg: headEulerAnglesDeg,
+  );
 }
 
 void main() {
@@ -261,5 +266,45 @@ void main() {
     // izquierdo (rightBBoxLobe en 0.85 es el mas lateral).
     expect(anchor, isNotNull);
     expect(anchor!.position.x, lessThan(0.5));
+  });
+
+  test('scale es la distancia interocular, para que el tamaño responda a la '
+      'distancia a la cámara', () {
+    final anchor = strategy.computeAnchor(faceLandmarks(
+      leftEye: const Landmark(0.40, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.60, 0.50, 0.0, visibility: 1),
+      leftBBoxLobe: const Landmark(0.30, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.70, 0.58, 0.0, visibility: 1),
+    ));
+
+    expect(anchor, isNotNull);
+    expect(anchor!.scale, closeTo(0.20, 1e-9)); // distancia entre 0.40 y 0.60
+  });
+
+  test('sin ángulos de cabeza, yaw y pitch quedan sin estimar', () {
+    final anchor = strategy.computeAnchor(faceLandmarks(
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      leftBBoxLobe: const Landmark(0.30, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.70, 0.58, 0.0, visibility: 1),
+    ));
+
+    expect(anchor, isNotNull);
+    expect(anchor!.yawRadians, isNull);
+    expect(anchor.pitchRadians, isNull);
+  });
+
+  test('con ángulos de cabeza, yaw y pitch se derivan de ellos', () {
+    final anchor = strategy.computeAnchor(faceLandmarks(
+      leftEye: const Landmark(0.42, 0.50, 0.0, visibility: 1),
+      rightEye: const Landmark(0.58, 0.50, 0.0, visibility: 1),
+      leftBBoxLobe: const Landmark(0.30, 0.58, 0.0, visibility: 1),
+      rightBBoxLobe: const Landmark(0.70, 0.58, 0.0, visibility: 1),
+      headEulerAnglesDeg: const Vec3(10, 20, 0),
+    ));
+
+    expect(anchor, isNotNull);
+    expect(anchor!.pitchRadians, closeTo(10 * 3.14159265 / 180, 1e-6));
+    expect(anchor.yawRadians, closeTo(-20 * 3.14159265 / 180, 1e-6));
   });
 }

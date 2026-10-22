@@ -116,6 +116,7 @@ class EarringStrategy implements TrackingStrategy {
         _outwardFactor(lobe.source) *
         interocular;
     final down = 0.04 * interocular;
+    final headAngles = frame.headEulerAnglesDeg;
 
     return AnchorPose(
       position: Vec3(
@@ -124,9 +125,32 @@ class EarringStrategy implements TrackingStrategy {
         lobe.point.z,
       ),
       rollRadians: roll,
+      // Distancia interocular como medida de referencia: a diferencia de la
+      // muñeca o los hombros, la cara no tiene reconstrucción métrica, pero
+      // esta sí encoge y crece en pantalla con la distancia real, así que
+      // sirve para escalar el tamaño aparente del arete (antes fijo).
+      scale: interocular,
+      yawRadians: headAngles == null ? null : _toYawRadians(headAngles.y),
+      pitchRadians: headAngles == null ? null : _toPitchRadians(headAngles.x),
       confidence: lobe.point.visibility ?? 1,
     );
   }
+
+  /// `headEulerAngleY` (giro lateral de cabeza) a radianes, para que el arete
+  /// gire con la cabeza en vez de quedarse plano.
+  ///
+  /// **Signo sin verificar en dispositivo.** ML Kit mide sobre la imagen
+  /// frontal tal cual se la pasa el plugin (espejada), el mismo motivo por el
+  /// que el lado bloqueado (ver `_awayFromCenter`) no puede fiarse de las
+  /// etiquetas izquierda/derecha de ML Kit. Si el arete gira al revés del
+  /// giro real de la cabeza, invertir este signo.
+  static double _toYawRadians(double headEulerAngleYDeg) =>
+      -headEulerAngleYDeg * math.pi / 180;
+
+  /// `headEulerAngleX` (cabeceo) a radianes. Mismo aviso de signo que
+  /// [_toYawRadians]: pendiente de confirmar en dispositivo.
+  static double _toPitchRadians(double headEulerAngleXDeg) =>
+      headEulerAngleXDeg * math.pi / 180;
 
   /// Diferencia lateral mínima antes de confiar en el bbox como señal de
   /// giro real. El bbox es simétrico por definición alrededor de su propio

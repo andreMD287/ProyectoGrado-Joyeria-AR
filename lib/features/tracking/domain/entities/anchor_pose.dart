@@ -35,6 +35,14 @@ class AnchorPose {
   /// `BraceletStrategy._estimateYaw`.
   final double? yawRadians;
 
+  /// Cabeceo fuera del plano de la imagen, en radianes. Mismo espíritu que
+  /// [yawRadians] (orienta el modelo 3D, no gira la imagen plana) pero sobre
+  /// el otro eje: para aretes viene de `headEulerAngleX` de ML Kit Face
+  /// (cabeza inclinada arriba/abajo), no de una reconstrucción métrica.
+  ///
+  /// `null` cuando la estrategia no lo estima.
+  final double? pitchRadians;
+
   /// Eje del miembro que sostiene la pieza, **en 3D y unitario**, expresado en
   /// el espacio métrico de la cámara ya enderezado (x a la derecha, y hacia
   /// abajo, z alejándose).
@@ -75,6 +83,7 @@ class AnchorPose {
     this.rollRadians = 0,
     this.scale,
     this.yawRadians,
+    this.pitchRadians,
     this.axis3D,
     this.palmNormal3D,
     this.metricWidth,
