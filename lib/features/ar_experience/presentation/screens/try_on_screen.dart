@@ -949,10 +949,20 @@ class _ModelOverlay extends ConsumerWidget {
   /// esto se ajusto sobre una sola. Con otra muneca quedara algo distinto.
   static const double _limbToPalm = 0.88;
 
+  /// Tamano exterior del arete como multiplo de la distancia interocular que
+  /// reporta `EarringStrategy`.
+  ///
+  /// Sin calibrar en dispositivo: se parte de la proporcion anatomica
+  /// promedio (interocular adulta ~63mm, arete tipico ~20mm de alto) en vez
+  /// de una medida real, a diferencia de `_jewelToPalm`/`_limbToPalm`. Ajustar
+  /// aqui si en dispositivo el arete sale muy grande o muy chico.
+  static const double _earringToInterocular = 0.32;
+
   /// Tamano exterior de la pieza como multiplo de la medida que reporta la
   /// estrategia.
   double get _scaleFactor => switch (piece.categoria) {
         JewelryCategory.bracelet => _jewelToPalm,
+        JewelryCategory.earring => _earringToInterocular,
         _ => 1.0,
       };
 
