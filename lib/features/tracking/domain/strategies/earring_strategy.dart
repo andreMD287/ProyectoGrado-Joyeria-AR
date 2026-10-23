@@ -145,12 +145,20 @@ class EarringStrategy implements TrackingStrategy {
   /// etiquetas izquierda/derecha de ML Kit. Si el arete gira al revés del
   /// giro real de la cabeza, invertir este signo.
   static double _toYawRadians(double headEulerAngleYDeg) =>
-      -headEulerAngleYDeg * math.pi / 180;
+      -headEulerAngleYDeg * _headRotationDamping * math.pi / 180;
 
   /// `headEulerAngleX` (cabeceo) a radianes. Mismo aviso de signo que
   /// [_toYawRadians]: pendiente de confirmar en dispositivo.
   static double _toPitchRadians(double headEulerAngleXDeg) =>
-      headEulerAngleXDeg * math.pi / 180;
+      headEulerAngleXDeg * _headRotationDamping * math.pi / 180;
+
+  /// Cuánto del ángulo de cabeza real se le pasa al arete, en vez del 1:1.
+  ///
+  /// Un arete real no gira solidario con la cabeza como una pieza rígida
+  /// atornillada — cuelga del lóbulo y se balancea mucho menos de lo que gira
+  /// la cabeza. Aplicado en 1:1 (visto en dispositivo) se veía exagerado.
+  /// Constante a seguir ajustando en dispositivo.
+  static const double _headRotationDamping = 0.35;
 
   /// Diferencia lateral mínima antes de confiar en el bbox como señal de
   /// giro real. El bbox es simétrico por definición alrededor de su propio

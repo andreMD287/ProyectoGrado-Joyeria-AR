@@ -304,7 +304,8 @@ void main() {
     ));
 
     expect(anchor, isNotNull);
-    expect(anchor!.pitchRadians, closeTo(10 * 3.14159265 / 180, 1e-6));
-    expect(anchor.yawRadians, closeTo(-20 * 3.14159265 / 180, 1e-6));
+    // Amortiguado (no 1:1): ver _headRotationDamping en EarringStrategy.
+    expect(anchor!.pitchRadians, closeTo(10 * 0.35 * 3.14159265 / 180, 1e-6));
+    expect(anchor.yawRadians, closeTo(-20 * 0.35 * 3.14159265 / 180, 1e-6));
   });
 }

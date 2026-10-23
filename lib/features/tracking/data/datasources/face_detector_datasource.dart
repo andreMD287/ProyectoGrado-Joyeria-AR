@@ -19,13 +19,14 @@ import 'landmark_detector.dart';
 /// orejas de ML Kit parpadean y hacen saltar el anclaje de un lado a otro.
 class FaceDetectorDataSource implements LandmarkDetector {
   final FaceDetector _detector = FaceDetector(
-    // `accurate` es lo que expone `headEulerAngleX` (cabeceo); en `fast` (el
-    // default) ML Kit solo garantiza yaw/roll. Cuesta algo de latencia por
-    // frame — a medir en dispositivo si se nota (ver B5).
-    options: FaceDetectorOptions(
-      enableLandmarks: true,
-      performanceMode: FaceDetectorMode.accurate,
-    ),
+    // Se probó `accurate` para tener `headEulerAngleX` (cabeceo), pero el
+    // plugin no lo condiciona al modo (lo pide igual en ambos — revisado en
+    // el código fuente de `google_mlkit_face_detection`), y `accurate` sí
+    // introdujo lag perceptible y descalibró el bbox del que depende
+    // `_outwardFactor` (verificado en dispositivo el 2026-10-23: el arete
+    // llegaba peor a la oreja que antes). Vuelta a `fast`, que es con lo que
+    // esas constantes se calibraron originalmente.
+    options: FaceDetectorOptions(enableLandmarks: true),
   );
 
   @override
