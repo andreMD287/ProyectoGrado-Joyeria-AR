@@ -377,7 +377,10 @@ void main() {
           pinkyMcp: Vec3(0.02, 0, 0),
         );
 
-    test('sin puntos metricos no inventa eje ni ancho', () {
+    test(
+        'sin puntos metricos no inventa ancho, pero si aproxima el eje en '
+        'el plano de la imagen (iOS: sin esto, JewelryScene nunca orienta ni '
+        'ocluye la pulsera)', () {
       final anchor = strategy.computeAnchor(
         hand(
           wrist: (0.5, 0.6),
@@ -386,8 +389,13 @@ void main() {
         ),
       )!;
 
-      expect(anchor.axis3D, isNull);
       expect(anchor.metricWidth, isNull);
+      // Eje palma->muneca en pantalla: (0, 0.2) normalizado, con z=0 (sin
+      // profundidad real que medir).
+      expect(anchor.axis3D, isNotNull);
+      expect(anchor.axis3D!.x, closeTo(0, 1e-9));
+      expect(anchor.axis3D!.y, closeTo(1, 1e-9));
+      expect(anchor.axis3D!.z, closeTo(0, 1e-9));
     });
 
     test('el ancho metrico es la distancia real entre nudillos', () {

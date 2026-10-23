@@ -407,27 +407,45 @@ class _JewelrySceneState extends State<JewelryScene> {
     final refWorld = _perpendicularTo(_ringAxisLocal)..applyQuaternion(alinear);
 
     final palma = anchor.palmNormal3D;
-    final referencia = palma == null
-        // Sin normal de palma se recurre a la cámara: peor, pero deja el
-        // detalle visible en vez de escondido.
-        ? three.Vector3(0, 0, 1)
-        // Signo invertido: se apunta al **dorso** de la mano, no a la palma.
-        // Es el lado que queda arriba con la palma apoyada en la mesa, que es
-        // como se lleva una pulsera y como el usuario espera ver el detalle.
-        : (three.Vector3(-palma.x, palma.y, palma.z)..normalize());
-
-    // Solo interesa su componente dentro del plano del aro.
-    final proyeccion = n.clone()..scale(referencia.dot(n));
-    final destino = referencia.clone()..sub(proyeccion);
-
     var giroRadianes = widget.staticYawDeg * math.pi / 180;
-    if (destino.length > 1e-6) {
-      destino.normalize();
-      // Ángulo con signo de `refWorld` a `destino`, medido alrededor de `n`.
-      final cos = destino.dot(refWorld).clamp(-1.0, 1.0);
-      final sin = (refWorld.clone()..cross(destino)).dot(n);
-      giroRadianes += math.atan2(sin, cos);
+
+    if (palma != null) {
+      // Signo invertido: se apunta al **dorso** de la mano, no a la palma.
+      // Es el lado que queda arriba con la palma apoyada en la mesa, que es
+      // como se lleva una pulsera y como el usuario espera ver el detalle.
+      final referencia = three.Vector3(-palma.x, palma.y, palma.z)
+        ..normalize();
+
+      // Solo interesa su componente dentro del plano del aro.
+      final proyeccion = n.clone()..scale(referencia.dot(n));
+      final destino = referencia.clone()..sub(proyeccion);
+
+      if (destino.length > 1e-6) {
+        destino.normalize();
+        // Ángulo con signo de `refWorld` a `destino`, medido alrededor de `n`.
+        final cos = destino.dot(refWorld).clamp(-1.0, 1.0);
+        final sin = (refWorld.clone()..cross(destino)).dot(n);
+        giroRadianes += math.atan2(sin, cos);
+      }
+    } else if (anchor.yawRadians != null) {
+      // Sin normal de palma (eje 3D aproximado sin reconstrucción métrica —
+      // ver `BraceletStrategy._planarAxis`, hoy el caso de iOS) no hay con qué
+      // calcular el giro por geometría. Un valor fijo de referencia (p. ej. la
+      // cámara) deja la pieza sin girar con la muñeca — visto en dispositivo:
+      // "no rota cuando giro la muñeca". Se usa en cambio el yaw 2D que la
+      // estrategia sí calcula siempre (aproximado, sin profundidad real, pero
+      // responde al giro real de la muñeca en vez de ignorarlo).
+      //
+      // Signo invertido respecto a como se usaba antes (`jewel.rotation.y +=
+      // yawRadians` directo sobre el eje Y del mundo): aquí el giro es
+      // alrededor de `n` (el eje real del antebrazo), no de Y, y around un eje
+      // distinto la misma magnitud puede verse al revés. Confirmado al revés
+      // en dispositivo (2026-10-23): girar la muñeca hacia adentro giraba la
+      // pulsera hacia afuera.
+      giroRadianes -= anchor.yawRadians!;
     }
+    // Sin palma ni yaw, se queda solo con el yaw estático del catálogo: la
+    // pieza no gira con la muñeca, pero tampoco salta a un valor inventado.
 
     // El giro es alrededor de un eje ya en coordenadas de mundo, así que se
     // aplica después de la alineación.

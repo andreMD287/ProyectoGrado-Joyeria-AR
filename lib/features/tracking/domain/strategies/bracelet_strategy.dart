@@ -169,6 +169,24 @@ class BraceletStrategy implements TrackingStrategy {
 
     final metrico = _fromWorldLandmarks(frame.worldLandmarks);
 
+    // Sin reconstrucción métrica (hoy, iOS/Apple Vision: ver
+    // `IosHandDetector`) no hay eje 3D real, y sin él `JewelryScene` nunca
+    // orienta el aro alrededor del brazo ni activa el oclusor — se queda con
+    // la orientación de exportación del modelo, girada solo en el plano de
+    // pantalla. Visto en dispositivo (iPhone, 2026-10-23): el aro se ve como
+    // un disco plano encima de la muñeca en vez de rodearla, y nunca se tapa.
+    //
+    // Mejor una aproximación que nada: se arma un eje 3D con la dirección que
+    // sí se mide en pantalla (palma→muñeca) y profundidad **cero** — asume
+    // que el antebrazo no se acerca ni se aleja de la cámara, solo que cruza
+    // la imagen en algún ángulo. Es la misma idea que ya usa `BraceletStrategy`
+    // para todo lo demás: de lo que no se puede medir en 3D, lo que sirve es
+    // la dirección, no la distancia. No es tan buena como la reconstrucción
+    // real de MediaPipe (no captura el escorzo cuando el brazo se acerca o
+    // aleja de la cámara), pero alinea el aro con el brazo en vez de dejarlo
+    // siempre de cara a la cámara.
+    final axis3D = metrico?.axis ?? _planarAxis(axisX, axisY);
+
     // El yaw se calcula antes que el tamano: actualiza _maxWidthToAxisRatio,
     // del que el tamano estable depende cuando no hay datos metricos.
     final yawRadians = _estimateYaw(
@@ -222,7 +240,7 @@ class BraceletStrategy implements TrackingStrategy {
       rollRadians: math.atan2(axisY / imageAspect, axisX),
       scale: stableWidth,
       yawRadians: yawRadians,
-      axis3D: metrico?.axis,
+      axis3D: axis3D,
       palmNormal3D: metrico?.normal,
       metricWidth: metrico?.palmWidth,
       confidence: wrist.visibility ?? 1.0,
@@ -320,6 +338,16 @@ class BraceletStrategy implements TrackingStrategy {
     );
   }
 
+  /// Eje 3D aproximado cuando no hay reconstrucción métrica (ver
+  /// [computeAnchor]): misma dirección palma→muñeca medida en pantalla, con
+  /// profundidad cero. [axisX]/[axisY] no pueden ser ambos cero cuando se
+  /// llega aquí — [computeAnchor] ya descartó ese caso —, pero se protege
+  /// igual por si se usa fuera de ese contexto.
+  static Vec3 _planarAxis(double axisX, double axisY) {
+    final largo = math.sqrt(axisX * axisX + axisY * axisY);
+    if (largo <= 0) return const Vec3(0, 1, 0);
+    return Vec3(axisX / largo, axisY / largo, 0);
+  }
 
   /// Longitud de un desplazamiento normalizado medida en pantalla, expresada
   /// en unidades del ancho del frame. Sin la corrección por [imageAspect] una
