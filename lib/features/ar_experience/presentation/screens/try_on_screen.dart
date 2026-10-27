@@ -800,6 +800,7 @@ class _CameraOverlay extends ConsumerWidget {
                   piece: piece,
                   anchor: anchor,
                   fit: fit,
+                  showOccluder: showDebug,
                 ),
 
                 if (showDebug)
@@ -908,11 +909,13 @@ class _ModelOverlay extends ConsumerWidget {
   final JewelryPiece piece;
   final AnchorPose? anchor;
   final PreviewFit fit;
+  final bool showOccluder;
 
   const _ModelOverlay({
     required this.piece,
     required this.anchor,
     required this.fit,
+    this.showOccluder = false,
   });
 
   /// Tamano en pantalla cuando la estrategia todavia no estima escala
@@ -936,18 +939,20 @@ class _ModelOverlay extends ConsumerWidget {
   /// Ancho del antebrazo donde se apoya la pieza, como fraccion del ancho de
   /// palma que reporta `scale`.
   ///
-  /// Calibrado en dispositivo **por juicio directo**, no por medicion: cuando
-  /// la pieza cruza el brazo, la deteccion de piel sobre la captura se
-  /// fragmenta y da anchos inconsistentes en filas contiguas, asi que los
-  /// numeros que salen de ahi no son de fiar. Con 0,77 la pulsera se cerraba
-  /// antes del brazo; 0,88 es el valor con el que encaja.
+  /// **Medido sobre captura** (2026-10-13), con el proxy de oclusion dibujado
+  /// en alambre: palma de 231 px y antebrazo de ~252 px a la altura de la
+  /// pieza, o sea 1,09. El valor anterior, 0,88, se habia fijado a ojo sobre
+  /// el tamano de la pulsera mientras el hueco del aro se estimaba con la caja
+  /// envolvente; ese error inflaba la pieza en una proporcion parecida y los
+  /// dos se compensaban en la pulsera de perlas, pero no en las demas. Con el
+  /// hueco ya medido sobre los vertices, esta constante describe el brazo.
   ///
-  /// De esta constante cuelgan dos cosas a la vez: el cilindro de oclusion —que
-  /// debe medir lo que el brazo— y, a traves del hueco, el tamano de la pieza.
+  /// De ella cuelgan dos cosas a la vez: el proxy de oclusion —que debe medir
+  /// lo que el brazo— y, a traves del hueco, el tamano de la pieza.
   ///
   /// **Limite conocido:** la proporcion antebrazo/palma varia entre personas, y
-  /// esto se ajusto sobre una sola. Con otra muneca quedara algo distinto.
-  static const double _limbToPalm = 0.88;
+  /// esto se midio sobre una sola.
+  static const double _limbToPalm = 1.08;
 
   /// Tamano exterior del arete como multiplo de la distancia interocular que
   /// reporta `EarringStrategy`.
@@ -968,10 +973,17 @@ class _ModelOverlay extends ConsumerWidget {
 
   /// Diametro del miembro que la pieza rodea, en pixeles, para el occluder.
   /// Solo las pulseras rodean algo hoy; un arete cuelga del lobulo.
-  double? _limbDiameterPx(PreviewFit fit, double? scale) {
+  ///
+  /// Si la estrategia vio el brazo en la imagen se usa su ancho medido, que no
+  /// depende de la proporcion brazo/palma de cada persona ni se encoge con la
+  /// mano de canto; si no, la estimacion por [_limbToPalm].
+  double? _limbDiameterPx(PreviewFit fit, AnchorPose? anchor) {
+    final scale = anchor?.scale;
     if (piece.categoria != JewelryCategory.bracelet || scale == null) {
       return null;
     }
+    final medido = anchor?.limbWidth;
+    if (medido != null) return fit.lengthOf(medido);
     return fit.lengthOf(scale) * _limbToPalm;
   }
 
@@ -1012,9 +1024,10 @@ class _ModelOverlay extends ConsumerWidget {
           anchor: anchor,
           fit: fit,
           targetSizePx: size,
-          limbDiameterPx: _limbDiameterPx(fit, scale),
+          limbDiameterPx: _limbDiameterPx(fit, anchor),
           staticYawDeg: piece.orientacionYawDeg,
           rollOffset: _rollOffset,
+          showOccluder: showOccluder,
         ),
       ),
     );

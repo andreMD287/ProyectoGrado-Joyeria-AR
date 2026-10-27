@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/anchor_pose.dart';
+import 'package:jewelry_ar/features/tracking/domain/entities/forearm_observation.dart';
 import 'package:jewelry_ar/core/math/geometry.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark.dart';
 import 'package:jewelry_ar/features/tracking/domain/entities/landmark_frame.dart';
@@ -581,4 +582,81 @@ void main() {
     });
   });
 
+  group('antebrazo visto en la imagen', () {
+    // Mano vertical: el eje de la mano baja recto (roll = 90°).
+    LandmarkFrame conBrazo(ForearmObservation? brazo) {
+      final base = hand(
+        wrist: (0.5, 0.6),
+        indexMcp: (0.4, 0.4),
+        pinkyMcp: (0.6, 0.4),
+      );
+      return LandmarkFrame(landmarks: base.landmarks, forearm: brazo);
+    }
+
+    final a = 15 * math.pi / 180;
+    final desviado = ForearmObservation(
+      originX: 0.52,
+      originY: 0.6,
+      dirX: -math.sin(a),
+      dirY: math.cos(a),
+      width: 0.22,
+      validScans: 5,
+    );
+
+    double grados(AnchorPose p) => p.rollRadians * 180 / math.pi;
+
+    test('orienta la pieza con el brazo, no con la mano', () {
+      final sinBrazo = strategy.computeAnchor(conBrazo(null))!;
+      strategy.reset();
+      final conObs = strategy.computeAnchor(conBrazo(desviado))!;
+
+      expect(grados(sinBrazo), closeTo(90, 0.01));
+      expect(grados(conObs), closeTo(105, 0.5));
+      // Se corre hacia donde está el brazo de verdad.
+      expect(conObs.position.x, greaterThan(sinBrazo.position.x));
+    });
+
+    test('mantiene la correccion unos frames si el brazo deja de verse', () {
+      strategy.computeAnchor(conBrazo(desviado));
+      final siguiente = strategy.computeAnchor(conBrazo(null))!;
+      expect(grados(siguiente), closeTo(105, 0.5));
+
+      AnchorPose? ultimo;
+      for (var k = 0; k < 10; k++) {
+        ultimo = strategy.computeAnchor(conBrazo(null));
+      }
+      expect(grados(ultimo!), closeTo(90, 0.01));
+    });
+
+    test(
+      'el ancho del brazo no vuelve a la estimacion por palma si la sonda falla',
+      () {
+        final medido = strategy.computeAnchor(conBrazo(desviado))!;
+        expect(medido.limbWidth, closeTo(0.22, 1e-9));
+
+        // Muchos frames sin brazo: se sigue con la proporcion aprendida.
+        AnchorPose? ultimo;
+        for (var k = 0; k < 20; k++) {
+          ultimo = strategy.computeAnchor(conBrazo(null));
+        }
+        expect(ultimo!.limbWidth, closeTo(0.22, 1e-9));
+      },
+    );
+
+    test('una medicion atipica no mueve el ancho', () {
+      for (var k = 0; k < 4; k++) {
+        strategy.computeAnchor(conBrazo(desviado));
+      }
+      final raro = ForearmObservation(
+        originX: desviado.originX,
+        originY: desviado.originY,
+        dirX: desviado.dirX,
+        dirY: desviado.dirY,
+        width: 0.5,
+        validScans: 3,
+      );
+      final p = strategy.computeAnchor(conBrazo(raro))!;
+      expect(p.limbWidth, closeTo(0.22, 1e-9));
+    });
+  });
 }

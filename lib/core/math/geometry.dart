@@ -158,6 +158,22 @@ NormalizedPoint rotateNormalizedToUpright({
   };
 }
 
+/// Inversa de [rotateNormalizedToUpright]: de un punto del frame vertical al
+/// buffer del sensor, que es donde están los píxeles.
+NormalizedPoint uprightToBuffer({
+  required double x,
+  required double y,
+  required int rotationDegrees,
+}) {
+  final rotation = ((rotationDegrees % 360) + 360) % 360;
+  return switch (rotation) {
+    90 => NormalizedPoint(y, 1.0 - x),
+    180 => NormalizedPoint(1.0 - x, 1.0 - y),
+    270 => NormalizedPoint(1.0 - y, x),
+    _ => NormalizedPoint(x, y),
+  };
+}
+
 /// Misma rotación que [rotateNormalizedToUpright], pero para un **vector** en
 /// un espacio centrado en el origen, como los landmarks métricos.
 ///
