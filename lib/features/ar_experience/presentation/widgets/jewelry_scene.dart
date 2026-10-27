@@ -122,6 +122,14 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// Cuánto se estrecha el proxy hacia la mano respecto al lado del codo.
   static const double _occluderTaper = 0.85;
 
+  /// Tope de metalicidad de los materiales. Un metal puro no tiene color
+  /// difuso: solo refleja el entorno, y esta escena no tiene mapa de entorno
+  /// (solo luz ambiental y direccional), así que sale negro. `cartier` lo
+  /// mostró en dispositivo: oro rosa con `metallicFactor` 10000 y 6 de 10
+  /// materiales sin factor, que glTF toma como 1. Con el tope se ve el color
+  /// base a costa de parte del brillo metálico.
+  static const double _metalnessMax = 0.35;
+
   /// Grosor del antebrazo respecto a su ancho. No es redondo: es bastante más
   /// ancho de lado a lado que de dorso a palma. Con un proxy circular hay que
   /// elegir entre taparlo de más en profundidad o de menos a lo ancho.
@@ -265,11 +273,26 @@ class _JewelrySceneState extends State<JewelryScene> {
 
     // Un contenedor propio evita pelear con la transformación que el modelo ya
     // trae: el hijo centra, el padre posiciona y orienta.
+    _limitarMetalicidad(model);
+
     final holder = three.Object3D()..add(model);
     viewer.scene.add(holder);
     _jewel = holder;
 
     _applyAnchor();
+  }
+
+  /// Recorta la metalicidad de los materiales a [_metalnessMax].
+  static void _limitarMetalicidad(three.Object3D model) {
+    void limitar(three.Material? material) {
+      if (material is three.GroupMaterial) {
+        material.children.forEach(limitar);
+      } else if (material is three.MeshStandardMaterial) {
+        material.metalness = math.min(material.metalness, _metalnessMax);
+      }
+    }
+
+    model.traverse((object) => limitar(object.material));
   }
 
   /// Vértices del modelo en su espacio, con las transformaciones de sus nodos
