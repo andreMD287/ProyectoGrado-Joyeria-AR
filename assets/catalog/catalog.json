@@ -73,21 +73,6 @@
       "orientacion_yaw_deg": 90,
       "estado": "pendiente",
       "notas_material": ""
-    },
-    {
-      "id": "collar-cadena-03",
-      "nombre": "Collar cadena fina con dije III",
-      "categoria": "collar",
-      "tipo_anclaje": "cuello",
-      "landmark_anclaje": [11, 12],
-      "modelo_glb": "assets/models/Collar3_Juanes.glb",
-      "foto": "assets/catalog/fotos/collar-cadena-01.jpg",
-      "dimensiones_mm": { "alto": 15, "ancho": 12, "profundidad": 3, "longitud": 420 },
-      "material": "oro 18k",
-      "descripcion": "",
-      "orientacion_yaw_deg": 90,
-      "estado": "pendiente",
-      "notas_material": "Valores provisionales copiados de collar-cadena-02: faltan foto, dimensiones y orientación reales."
     }
   ]
 }
