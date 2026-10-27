@@ -19,9 +19,18 @@ import 'landmark.dart';
 /// [worldLandmarks] queda vacía cuando el detector no la provee: hoy solo la
 /// entrega MediaPipe manos en Android. Quien la consuma debe tratar la lista
 /// vacía como "no disponible" y degradar, nunca asumir que está.
+///
+/// [headEulerAnglesDeg] es la orientación de la cabeza que entrega
+/// `google_mlkit_face_detection` (x = pitch/`headEulerAngleX`, y =
+/// yaw/`headEulerAngleY`, z = roll/`headEulerAngleZ`), en **grados**. No es
+/// una reconstrucción métrica como [worldLandmarks]: ML Kit Face no la da. Es
+/// un sustituto barato para orientar piezas que cuelgan de la cabeza (aretes)
+/// en 3D sin esperar a Face Mesh. `null` para cualquier detector que no sea
+/// el facial.
 class LandmarkFrame {
   final List<Landmark> landmarks;
   final List<Vec3> worldLandmarks;
+  final Vec3? headEulerAnglesDeg;
 
   /// Antebrazo encontrado en la imagen, o `null` si no se buscó o no se vio.
   /// Solo lo calcula el detector de manos, que es el que tiene el frame crudo
@@ -32,6 +41,7 @@ class LandmarkFrame {
     this.landmarks = const [],
     this.worldLandmarks = const [],
     this.forearm,
+    this.headEulerAnglesDeg,
   });
 
   static const empty = LandmarkFrame();

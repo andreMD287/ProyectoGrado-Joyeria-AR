@@ -521,10 +521,13 @@ class _JewelrySceneState extends State<JewelryScene> {
     final axis = anchor.axis3D;
 
     if (axis == null) {
-      // Sin eje real solo queda girar en el plano de la pantalla, como antes.
+      // Sin eje real solo queda girar en el plano de la pantalla, mas el yaw
+      // y el cabeceo que reporte la estrategia (aretes: angulos de cabeza de
+      // ML Kit Face, ver EarringStrategy).
       jewel.rotation.z = -(anchor.rollRadians + widget.rollOffset);
       jewel.rotation.y =
           widget.staticYawDeg * math.pi / 180 + (anchor.yawRadians ?? 0);
+      jewel.rotation.x = anchor.pitchRadians ?? 0;
       return;
     }
 
