@@ -987,6 +987,35 @@ class _ModelOverlay extends ConsumerWidget {
     return fit.lengthOf(scale) * _limbToPalm;
   }
 
+  /// Ancho del cuello como fraccion del ancho de hombros que reporta
+  /// `NecklaceStrategy`.
+  ///
+  /// Proporcion anatomica de partida: ML Kit pone los hombros en la
+  /// articulacion, unos 34 cm entre si en un adulto, y el cuello mide de frente
+  /// unos 11-12 cm, o sea ~0,34. **Medido sobre captura** (2026-10-28) con el
+  /// proxy de cuello dibujado: con 0,34 el proxy media ~235 px para un cuello
+  /// de ~265, y la cadena quedaba metida en el cuello en vez de rodearlo.
+  ///
+  /// Con 0,38, girado, el proxy media 160 px para un cuello de ~125
+  /// (2026-10-29); se dejo en 0,36 para no encoger el collar, que ya se ve
+  /// pequeño.
+  static const double _neckToShoulders = 0.36;
+
+
+  bool get _isNecklace => piece.categoria == JewelryCategory.necklace;
+
+  /// Ancho de hombros en pixeles, tal como se ven, para collares.
+  ///
+  /// Con el torso girado se acortan por `cos θ` y el cuello no, asi que en
+  /// teoria habria que deshacer el escorzo. **Se probo y empeora** (2026-10-28):
+  /// el giro estimado no es tan preciso, el hueco crecia hasta un 43 % y la
+  /// cadena quedaba colgando sobre el pecho, por fuera del cuello.
+  double? _shoulderWidthPx(PreviewFit fit, AnchorPose? anchor) {
+    final scale = anchor?.scale;
+    if (!_isNecklace || scale == null) return null;
+    return fit.lengthOf(scale);
+  }
+
   /// Rotacion extra sobre el angulo que reporta la estrategia.
   ///
   /// `BraceletStrategy` entrega el angulo del **eje del antebrazo**, y una
@@ -1011,6 +1040,8 @@ class _ModelOverlay extends ConsumerWidget {
         ? _fallbackSize
         : (fit.lengthOf(scale) * _scaleFactor).clamp(_minSize, _maxSize);
 
+    final hombros = _shoulderWidthPx(fit, anchor);
+
     return model.when(
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
@@ -1028,6 +1059,8 @@ class _ModelOverlay extends ConsumerWidget {
           staticYawDeg: piece.orientacionYawDeg,
           rollOffset: _rollOffset,
           showOccluder: showOccluder,
+          necklace: _isNecklace,
+          neckDiameterPx: hombros == null ? null : hombros * _neckToShoulders,
         ),
       ),
     );
@@ -1156,7 +1189,8 @@ class _LandmarkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (landmarks.isNotEmpty) {
-      final isHand = landmarks.length >= _handLandmarkCount;
+      // Pose trae 33 puntos: con `>=` se le dibujaba un esqueleto de mano.
+      final isHand = landmarks.length == _handLandmarkCount;
 
       final bonePaint = Paint()
         ..color = const Color(0xFF35E07A)
