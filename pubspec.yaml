@@ -52,6 +52,7 @@ dependencies:
 
   # ── Diagnóstico ──
   logger: ^2.5.0
+  three_js_advanced_loaders: 0.3.0
 
 dev_dependencies:
   flutter_test:
@@ -68,4 +69,5 @@ flutter:
 
   assets:
     - assets/catalog/catalog.json
+    - assets/environments/
     - assets/models/
