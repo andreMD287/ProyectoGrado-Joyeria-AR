@@ -129,6 +129,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
   LandmarkStabilizer? _axisStabilizer;
   LandmarkStabilizer? _normalStabilizer;
   ScalarStabilizer? _metricWidthStabilizer;
+  ScalarStabilizer? _limbWidthStabilizer;
 
   @override
   Stream<TrackingFrame> trackingStream(JewelryCategory category) {
@@ -167,6 +168,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
         _axisStabilizer = OneEuroStabilizer(minCutoff: 0.4, beta: 0.05);
         _normalStabilizer = OneEuroStabilizer(minCutoff: 0.4, beta: 0.05);
         _metricWidthStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
+        // Mismo afinado que la escala: es otra medida de tamaño, y si late,
+        // late la pieza entera.
+        _limbWidthStabilizer = ScalarStabilizer(minCutoff: 0.5, beta: 0.1);
         _lost = true;
         _lastDetectionMs = 0;
         final runner = _runnerFor(strategy.detectorKind);
@@ -242,6 +246,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     final axis = anchor.axis3D;
     final normal = anchor.palmNormal3D;
     final metricWidth = anchor.metricWidth;
+    final limbWidth = anchor.limbWidth;
     return AnchorPose(
       position: position,
       rollRadians:
@@ -261,6 +266,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
       metricWidth: metricWidth == null
           ? null
           : _metricWidthStabilizer?.filter(metricWidth, tSeconds),
+      limbWidth: limbWidth == null
+          ? null
+          : _limbWidthStabilizer?.filter(limbWidth, tSeconds) ?? limbWidth,
       confidence: anchor.confidence,
     );
   }
@@ -279,6 +287,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _axisStabilizer?.reset();
     _normalStabilizer?.reset();
     _metricWidthStabilizer?.reset();
+    _limbWidthStabilizer?.reset();
     _yawStabilizer?.reset();
   }
 

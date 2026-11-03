@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../../core/math/geometry.dart';
 import '../entities/anchor_pose.dart';
+import '../entities/forearm_observation.dart';
 import '../entities/landmark.dart';
 import '../entities/landmark_frame.dart';
 import 'tracking_strategy.dart';
@@ -25,6 +26,12 @@ import 'tracking_strategy.dart';
 ///
 /// Promediar tres landmarks en vez de leer uno solo también reduce el jitter
 /// antes de que actúe el estabilizador.
+///
+/// **Corrección por el antebrazo visto.** Cuando el detector entrega una
+/// [ForearmObservation] —el brazo buscado en el propio frame—, el eje se gira
+/// hacia el del brazo real y el ancla se lleva a su línea media. Eso corrige
+/// el error de extrapolar desde la mano con la muñeca desviada, y de paso da
+/// el ancho del brazo medido en vez de estimarlo por la palma.
 class BraceletStrategy implements TrackingStrategy {
   /// Índices de MediaPipe Hands.
   static const int wristLandmark = 0;
@@ -83,6 +90,43 @@ class BraceletStrategy implements TrackingStrategy {
   int _missedFrames = 0;
   static const int _missFramesBeforeRecalibrate = 3;
 
+  /// Corrección del eje de la mano hacia el antebrazo real, vista en la
+  /// imagen (ver [ForearmObservation]): giro en radianes y desplazamiento
+  /// lateral en anchos de palma.
+  ///
+  /// Se guarda **relativa a la mano** y no como posición absoluta: así sigue
+  /// valiendo unos frames aunque la mano se mueva, y un frame en que el brazo
+  /// no se ve (reflejo, borde del encuadre) no hace saltar la pieza de vuelta
+  /// al eje de la mano.
+  double _deviation = 0;
+  double _lateral = 0;
+
+  /// Últimas mediciones de giro y desplazamiento; se aplica su mediana. La
+  /// desviación medida oscila ±2–3° entre frames seguidos, y aplicada cruda
+  /// hacía bambolear la pieza justo en la pose de frente, donde la corrección
+  /// es pequeña y el ruido se nota más que ella.
+  final List<double> _deviations = [];
+  final List<double> _laterals = [];
+  static const int _correctionWindow = 7;
+
+  /// Ancho del brazo visto, como proporción del tamaño de la mano (el mayor
+  /// entre ancho de palma y largo palma→muñeca, la misma regla de la sonda).
+  /// Guarda las últimas mediciones y se usa su **mediana**.
+  ///
+  /// Así se aprende la proporción de cada persona en vez de una constante, y
+  /// cuando la sonda falla un frame la pieza no vuelve a la estimación por
+  /// palma —que con la mano de canto es diminuta—: sigue con la proporción
+  /// aprendida por el tamaño actual de la mano. Alternar entre las dos hacía
+  /// cambiar de tamaño la pieza a cada momento (visto en dispositivo).
+  final List<double> _limbRatios = [];
+  static const int _limbRatioWindow = 9;
+  int _framesSinForearm = _holdForearmFrames;
+
+  /// Frames que se mantiene la última corrección sin observación nueva. A la
+  /// frecuencia de detección son ~0,5 s: cubre parpadeos de la sonda, no una
+  /// pérdida real del brazo.
+  static const int _holdForearmFrames = 8;
+
 
   BraceletStrategy({
     this.forearmOffset = 0.20,
@@ -105,6 +149,12 @@ class BraceletStrategy implements TrackingStrategy {
     _lastSign = 1.0;
     _sameSignFrames = 0;
     _missedFrames = 0;
+    _deviation = 0;
+    _lateral = 0;
+    _deviations.clear();
+    _laterals.clear();
+    _limbRatios.clear();
+    _framesSinForearm = _holdForearmFrames;
   }
 
   @override
@@ -161,31 +211,36 @@ class BraceletStrategy implements TrackingStrategy {
     // El desplazamiento se hace en espacio normalizado: escalar un vector
     // normalizado equivale a escalar su versión en píxeles, así que aquí no
     // hace falta corregir por aspecto (a diferencia de longitudes y ángulos).
+    _updateForearm(
+      frame.forearm,
+      wristX: wrist.x,
+      wristY: wrist.y / imageAspect,
+      axisX: axisX / axisLength,
+      axisY: axisY / imageAspect / axisLength,
+      palmWidth: palmWidth,
+      handSize: math.max(palmWidth, axisLength),
+    );
+    final corregido = _framesSinForearm < _holdForearmFrames;
+
+    // Eje en el espacio isótropo (y / aspecto), girado hacia el antebrazo
+    // real si se vio. Sin observación, el giro es 0 y queda el eje de la mano.
+    final cosD = math.cos(corregido ? _deviation : 0);
+    final sinD = math.sin(corregido ? _deviation : 0);
+    final hx = axisX / axisLength, hy = axisY / imageAspect / axisLength;
+    final dirX = hx * cosD - hy * sinD;
+    final dirY = hx * sinD + hy * cosD;
+    final lateral = corregido ? _lateral * palmWidth : 0.0;
+
+    // El ancla avanza lo mismo que antes desde la muñeca, pero por la línea
+    // media del brazo y no por la prolongación de la mano.
+    final avance = axisLength * forearmOffset;
     final position = Vec3(
-      wrist.x + axisX * forearmOffset,
-      wrist.y + axisY * forearmOffset,
+      wrist.x - hy * lateral + dirX * avance,
+      (wrist.y / imageAspect + hx * lateral + dirY * avance) * imageAspect,
       wrist.z + axisZ * forearmOffset,
     );
 
     final metrico = _fromWorldLandmarks(frame.worldLandmarks);
-
-    // Sin reconstrucción métrica (hoy, iOS/Apple Vision: ver
-    // `IosHandDetector`) no hay eje 3D real, y sin él `JewelryScene` nunca
-    // orienta el aro alrededor del brazo ni activa el oclusor — se queda con
-    // la orientación de exportación del modelo, girada solo en el plano de
-    // pantalla. Visto en dispositivo (iPhone, 2026-10-23): el aro se ve como
-    // un disco plano encima de la muñeca en vez de rodearla, y nunca se tapa.
-    //
-    // Mejor una aproximación que nada: se arma un eje 3D con la dirección que
-    // sí se mide en pantalla (palma→muñeca) y profundidad **cero** — asume
-    // que el antebrazo no se acerca ni se aleja de la cámara, solo que cruza
-    // la imagen en algún ángulo. Es la misma idea que ya usa `BraceletStrategy`
-    // para todo lo demás: de lo que no se puede medir en 3D, lo que sirve es
-    // la dirección, no la distancia. No es tan buena como la reconstrucción
-    // real de MediaPipe (no captura el escorzo cuando el brazo se acerca o
-    // aleja de la cámara), pero alinea el aro con el brazo en vez de dejarlo
-    // siempre de cara a la cámara.
-    final axis3D = metrico?.axis ?? _planarAxis(axisX, axisY);
 
     // El yaw se calcula antes que el tamano: actualiza _maxWidthToAxisRatio,
     // del que el tamano estable depende cuando no hay datos metricos.
@@ -237,14 +292,73 @@ class BraceletStrategy implements TrackingStrategy {
 
     return AnchorPose(
       position: position,
-      rollRadians: math.atan2(axisY / imageAspect, axisX),
+      rollRadians: math.atan2(dirY, dirX),
       scale: stableWidth,
       yawRadians: yawRadians,
-      axis3D: axis3D,
+      // El eje métrico viene de la mano, igual que el de la imagen, y trae el
+      // mismo error. Se le aplica el mismo giro alrededor de la línea de
+      // visión: x e y del marco métrico van en las mismas direcciones que las
+      // de la imagen, y la componente de profundidad no cambia.
+      //
+      // Sin reconstrucción métrica (hoy, iOS: ver `_planarAxis`) se aproxima
+      // con la misma dirección que se mide en pantalla y profundidad cero, ya
+      // girada hacia el antebrazo si la sonda lo vio (`dirX`/`dirY`, en vez
+      // del eje crudo de la mano) — eso es lo que faltaba para que iOS
+      // también se beneficie de la corrección de la sonda, aunque no tenga
+      // sonda propia todavía.
+      axis3D: metrico == null
+          ? _planarAxis(dirX, dirY)
+          : Vec3(
+              metrico.axis.x * cosD - metrico.axis.y * sinD,
+              metrico.axis.x * sinD + metrico.axis.y * cosD,
+              metrico.axis.z,
+            ),
       palmNormal3D: metrico?.normal,
       metricWidth: metrico?.palmWidth,
+      limbWidth: _limbRatios.isEmpty
+          ? null
+          : _median(_limbRatios) * math.max(palmWidth, axisLength),
       confidence: wrist.visibility ?? 1.0,
     );
+  }
+
+  /// Actualiza la corrección hacia el antebrazo con la observación de este
+  /// frame, si la hay. Todo en el espacio isótropo de la imagen.
+  void _updateForearm(
+    ForearmObservation? obs, {
+    required double wristX,
+    required double wristY,
+    required double axisX,
+    required double axisY,
+    required double palmWidth,
+    required double handSize,
+  }) {
+    if (obs == null) {
+      if (_framesSinForearm < _holdForearmFrames) _framesSinForearm++;
+      return;
+    }
+    // Ángulo con signo del eje de la mano al del brazo.
+    final cross = axisX * obs.dirY - axisY * obs.dirX;
+    final dot = axisX * obs.dirX + axisY * obs.dirY;
+    _deviations.add(math.atan2(cross, dot));
+    // Desplazamiento del brazo respecto a la muñeca, sobre la perpendicular
+    // al eje de la mano (la misma con la que la sonda mide).
+    _laterals.add(
+      ((obs.originX - wristX) * -axisY + (obs.originY - wristY) * axisX) /
+          palmWidth,
+    );
+    if (_deviations.length > _correctionWindow) _deviations.removeAt(0);
+    if (_laterals.length > _correctionWindow) _laterals.removeAt(0);
+    _deviation = _median(_deviations);
+    _lateral = _median(_laterals);
+    _limbRatios.add(obs.width / handSize);
+    if (_limbRatios.length > _limbRatioWindow) _limbRatios.removeAt(0);
+    _framesSinForearm = 0;
+  }
+
+  static double _median(List<double> valores) {
+    final ordenados = [...valores]..sort();
+    return ordenados[ordenados.length ~/ 2];
   }
 
   /// Eje real del antebrazo y ancho real de la palma, a partir de la
@@ -338,15 +452,30 @@ class BraceletStrategy implements TrackingStrategy {
     );
   }
 
-  /// Eje 3D aproximado cuando no hay reconstrucción métrica (ver
-  /// [computeAnchor]): misma dirección palma→muñeca medida en pantalla, con
-  /// profundidad cero. [axisX]/[axisY] no pueden ser ambos cero cuando se
-  /// llega aquí — [computeAnchor] ya descartó ese caso —, pero se protege
-  /// igual por si se usa fuera de ese contexto.
-  static Vec3 _planarAxis(double axisX, double axisY) {
-    final largo = math.sqrt(axisX * axisX + axisY * axisY);
+  /// Eje 3D aproximado cuando no hay reconstrucción métrica (hoy, iOS:
+  /// Apple Vision no la entrega, a diferencia de MediaPipe en Android — ver
+  /// [computeAnchor]). Sin ella, `JewelryScene` nunca orienta el aro
+  /// alrededor del brazo ni activa el oclusor: se queda con la orientación de
+  /// exportación del modelo, girada solo en el plano de pantalla. Visto en
+  /// dispositivo (iPhone, 2026-10-23): el aro se ve como un disco plano
+  /// encima de la muñeca en vez de rodearla, y nunca se tapa.
+  ///
+  /// Mejor una aproximación que nada: misma dirección que ya se mide en
+  /// pantalla —[dirX]/[dirY], que ya incluyen el giro hacia el antebrazo real
+  /// cuando la sonda lo vio (ver [_updateForearm]), no el eje crudo de la
+  /// mano— con profundidad **cero**: asume que el antebrazo no se acerca ni
+  /// se aleja de la cámara, solo que cruza la imagen en algún ángulo. No
+  /// captura el escorzo cuando el brazo se acerca o se aleja de la cámara,
+  /// pero alinea el aro con el brazo en vez de dejarlo siempre de cara a
+  /// ella.
+  ///
+  /// [dirX]/[dirY] no pueden ser ambos cero cuando se llega aquí —
+  /// [computeAnchor] ya descartó ese caso al validar `axisLength`—, pero se
+  /// protege igual por si se usa fuera de ese contexto.
+  static Vec3 _planarAxis(double dirX, double dirY) {
+    final largo = math.sqrt(dirX * dirX + dirY * dirY);
     if (largo <= 0) return const Vec3(0, 1, 0);
-    return Vec3(axisX / largo, axisY / largo, 0);
+    return Vec3(dirX / largo, dirY / largo, 0);
   }
 
   /// Longitud de un desplazamiento normalizado medida en pantalla, expresada

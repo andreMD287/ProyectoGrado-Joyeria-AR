@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:three_js/three_js.dart' as three;
 
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/ring_geometry.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 
 /// Escena 3D que cubre toda el área de cámara y coloca la joya dentro (ADR-16).
@@ -50,6 +51,11 @@ class JewelryScene extends StatefulWidget {
   /// `null` en piezas que no rodean nada (aretes): entonces no hay oclusión.
   final double? limbDiameterPx;
 
+  /// Dibuja el proxy de oclusión en alambre rojo. Es la herramienta para
+  /// juzgar en dispositivo si el proxy calza con el brazo real: sin verlo, un
+  /// proxy demasiado fino o grueso solo se nota como cuentas que aparecen o
+  /// desaparecen donde no deben.
+  final bool showOccluder;
 
   const JewelryScene({
     super.key,
@@ -60,6 +66,7 @@ class JewelryScene extends StatefulWidget {
     this.limbDiameterPx,
     this.staticYawDeg = 0,
     this.rollOffset = 0,
+    this.showOccluder = false,
   });
 
   @override
@@ -104,12 +111,24 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// lugar de un recorte plano sobre la imagen.
   three.Object3D? _occluder;
 
+  /// Silueta visible del proxy, solo para diagnóstico (ver
+  /// [JewelryScene.showOccluder]). Es hija del proxy, así que hereda su pose.
+  three.Object3D? _occluderWire;
+
   /// Largo del proxy en diámetros: basta con que sobresalga por ambos lados
   /// para tapar en cualquier inclinación.
   static const double _occluderLengthRatio = 3.0;
 
   /// Cuánto se estrecha el proxy hacia la mano respecto al lado del codo.
   static const double _occluderTaper = 0.85;
+
+  /// Tope de metalicidad de los materiales. Un metal puro no tiene color
+  /// difuso: solo refleja el entorno, y esta escena no tiene mapa de entorno
+  /// (solo luz ambiental y direccional), así que sale negro. `cartier` lo
+  /// mostró en dispositivo: oro rosa con `metallicFactor` 10000 y 6 de 10
+  /// materiales sin factor, que glTF toma como 1. Con el tope se ve el color
+  /// base a costa de parte del brillo metálico.
+  static const double _metalnessMax = 0.35;
 
   /// Grosor del antebrazo respecto a su ancho. No es redondo: es bastante más
   /// ancho de lado a lado que de dorso a palma. Con un proxy circular hay que
@@ -125,12 +144,12 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// piel, queda algo suelta.
   static const double _holguraDelAro = 1.12;
 
-  /// Menor extensión del modelo. En una pieza de cuentas es el grosor de la
-  /// cuenta, con el que se aproxima el hueco del aro.
-  double _modelThickness = 0;
-
   /// Diámetro exterior del modelo: su mayor extensión.
   double _modelDiameter = 1;
+
+  /// Hueco y eje del aro medidos sobre los vértices, o `null` si la pieza no
+  /// tiene forma de aro reconocible (ver `ring_geometry.dart`).
+  RingMeasure? _aro;
 
   /// Hueco del aro ya renderizado, en unidades de mundo, o 0 si la pieza no
   /// tiene forma de aro reconocible. Acota cuánto puede engordar el proxy.
@@ -198,15 +217,45 @@ class _JewelrySceneState extends State<JewelryScene> {
     viewer.scene.add(occluder);
     _occluder = occluder;
 
+    // Sin prueba de profundidad y dibujada al final: tiene que verse aunque la
+    // pieza o el propio proxy estén delante.
+    final wire = three.Mesh(
+      occluder.geometry,
+      three.MeshBasicMaterial.fromMap({
+        'color': 0xff2020,
+        'wireframe': true,
+        'transparent': true,
+        'opacity': 0.55,
+        'depthTest': false,
+        'depthWrite': false,
+      }),
+    )
+      ..renderOrder = 10
+      ..visible = widget.showOccluder;
+    occluder.add(wire);
+    _occluderWire = wire;
+
     final gltf = await three.GLTFLoader().fromBytes(widget.modelBytes);
     final model = gltf?.scene;
     if (model == null) return;
 
     // El GLB viene en la escala y el origen que le dio el exportador: se
     // centra y se mide para poder pedirle después un tamaño aparente concreto.
-    final bounds = three.BoundingBox()..setFromObject(model);
-    final size = bounds.max.clone()..sub(bounds.min);
-    final center = bounds.getCenter(three.Vector3());
+    //
+    // La caja se calcula **sobre los vértices**, no con `BoundingBox`: esa
+    // transforma la caja de cada malla por la matriz de su nodo, y con nodos
+    // rotados la infla. En `cartier` daba 3,50 de diámetro donde los vértices
+    // miden 2,53, con el centro desplazado: la pieza quedaba corrida unos
+    // 15 px del eje del brazo (medido en dispositivo, 2026-10-13).
+    final puntos = _vertices(model);
+    if (puntos.isEmpty) return;
+    final (min, max) = _limites(puntos);
+    final size = three.Vector3(max.x - min.x, max.y - min.y, max.z - min.z);
+    final center = three.Vector3(
+      (max.x + min.x) / 2,
+      (max.y + min.y) / 2,
+      (max.z + min.z) / 2,
+    );
 
     // Se **resta**, no se asigna: la caja viene en coordenadas de mundo, o sea
     // que su centro ya incluye la traslacion que el modelo trae del exportador.
@@ -214,11 +263,18 @@ class _JewelrySceneState extends State<JewelryScene> {
     // muneca justo esa cantidad (visto en dispositivo: se iba hacia un lado).
     model.position.sub(center);
     _modelDiameter = math.max(math.max(size.x, size.y), math.max(size.z, 1e-6));
-    _modelThickness = math.min(math.min(size.x, size.y), size.z);
-    _ringAxisLocal = _menorExtension(size);
+    _aro = measureRing(puntos);
+    _ringAxisLocal = switch (_aro?.axis) {
+      0 => three.Vector3(1, 0, 0),
+      1 => three.Vector3(0, 1, 0),
+      2 => three.Vector3(0, 0, 1),
+      _ => _menorExtension(size),
+    };
 
     // Un contenedor propio evita pelear con la transformación que el modelo ya
     // trae: el hijo centra, el padre posiciona y orienta.
+    _limitarMetalicidad(model);
+
     final holder = three.Object3D()..add(model);
     viewer.scene.add(holder);
     _jewel = holder;
@@ -226,9 +282,54 @@ class _JewelrySceneState extends State<JewelryScene> {
     _applyAnchor();
   }
 
+  /// Recorta la metalicidad de los materiales a [_metalnessMax].
+  static void _limitarMetalicidad(three.Object3D model) {
+    void limitar(three.Material? material) {
+      if (material is three.GroupMaterial) {
+        material.children.forEach(limitar);
+      } else if (material is three.MeshStandardMaterial) {
+        material.metalness = math.min(material.metalness, _metalnessMax);
+      }
+    }
+
+    model.traverse((object) => limitar(object.material));
+  }
+
+  /// Vértices del modelo en su espacio, con las transformaciones de sus nodos
+  /// aplicadas — el mismo recorrido que hace la caja envolvente.
+  static List<Vec3> _vertices(three.Object3D model) {
+    model.updateMatrixWorld(true);
+    final puntos = <Vec3>[];
+    final v = three.Vector3();
+    model.traverse((object) {
+      final position = object.geometry?.attributes['position'];
+      if (position is! three.BufferAttribute) return;
+      for (var i = 0; i < position.count; i++) {
+        v.fromBuffer(position, i).applyMatrix4(object.matrixWorld);
+        puntos.add(Vec3(v.x, v.y, v.z));
+      }
+    });
+    return puntos;
+  }
+
+  static (Vec3, Vec3) _limites(List<Vec3> puntos) {
+    var minX = double.infinity, minY = double.infinity, minZ = double.infinity;
+    var maxX = -double.infinity, maxY = -double.infinity, maxZ = -double.infinity;
+    for (final p in puntos) {
+      minX = math.min(minX, p.x);
+      minY = math.min(minY, p.y);
+      minZ = math.min(minZ, p.z);
+      maxX = math.max(maxX, p.x);
+      maxY = math.max(maxY, p.y);
+      maxZ = math.max(maxZ, p.z);
+    }
+    return (Vec3(minX, minY, minZ), Vec3(maxX, maxY, maxZ));
+  }
+
   @override
   void didUpdateWidget(covariant JewelryScene oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _occluderWire?.visible = widget.showOccluder;
     _applyAnchor();
   }
 
@@ -257,9 +358,13 @@ class _JewelrySceneState extends State<JewelryScene> {
     final anchor = widget.anchor;
     if (jewel == null || area == null) return;
 
-    // Sin pose no se dibuja, en vez de dejarla clavada donde estaba.
+    // Sin pose no se dibuja, en vez de dejarla clavada donde estaba. El proxy
+    // tampoco: no tapa nada, pero su silueta de diagnóstico quedaba flotando.
     jewel.visible = anchor != null;
-    if (anchor == null) return;
+    if (anchor == null) {
+      _occluder?.visible = false;
+      return;
+    }
 
     final aspect = area.width / area.height;
     final tanHalfV = math.tan(_fovYFor(aspect) * math.pi / 180 / 2);
@@ -281,14 +386,22 @@ class _JewelrySceneState extends State<JewelryScene> {
     final targetWorld = widget.targetSizePx / area.width * (2 * halfWidth);
 
     final limbPx = widget.limbDiameterPx;
-    final limbWorld =
-        limbPx == null ? 0.0 : limbPx / area.width * (2 * halfWidth);
+    // Lo que llega es el ancho de la **silueta** del brazo, tal como se ve.
+    // Se pasa al eje mayor de su sección, que es lo que el aro debe rodear.
+    final limbWorld = limbPx == null
+        ? 0.0
+        : limbPx /
+            area.width *
+            (2 * halfWidth) /
+            _silhouetteRatio(anchor, jewel.position);
 
-    // Hueco del aro en unidades del modelo: el exterior menos dos veces el
-    // grosor. Solo vale si la pieza tiene forma de aro —dos ejes largos y uno
-    // delgado—; hay modelos del catálogo cuya caja no la tiene.
-    final huecoModelo = _modelDiameter - 2 * _modelThickness;
-    final esAro = huecoModelo > _modelDiameter * 0.3;
+    // Hueco del aro en unidades del modelo, medido sobre los vértices. Antes
+    // se deducía de la caja (exterior menos dos veces su menor extensión) y
+    // subestimaba el hueco hasta un 20 %, lo que agrandaba la pieza en la
+    // misma proporción y de forma distinta en cada modelo.
+    final aro = _aro;
+    final huecoModelo = aro?.holeDiameter ?? 0;
+    final esAro = aro != null;
 
     // **Lo que tiene que encajar es el hueco alrededor del brazo**, no el
     // diámetro exterior contra una medida cualquiera. Escalando por el exterior
@@ -307,6 +420,35 @@ class _JewelrySceneState extends State<JewelryScene> {
 
     _applyOrientation(jewel, anchor);
     _applyOccluder(anchor, jewel, limbWorld);
+  }
+
+  /// Silueta visible de la sección del brazo respecto a su eje mayor.
+  ///
+  /// La sección no es redonda ([_occluderFlatness]) y gira con la palma. De
+  /// frente se ve el lado ancho y la relación es 1; con la mano de canto se ve
+  /// el angosto y baja a 0,75. Sin esta corrección, en esa pose el proxy y el
+  /// hueco del aro salían un 25 % más estrechos que el brazo medido (165 px de
+  /// brazo contra 125 de proxy, en dispositivo el 2026-10-13).
+  double _silhouetteRatio(AnchorPose anchor, three.Vector3 position) {
+    final axis = anchor.axis3D;
+    final palma = anchor.palmNormal3D;
+    if (axis == null || palma == null) return 1;
+
+    final n = three.Vector3(axis.x, -axis.y, -axis.z)..normalize();
+    final normalPalma = three.Vector3(-palma.x, palma.y, palma.z)..normalize();
+    final ancho = n.clone()..cross(normalPalma);
+    // Dirección en la que se mide la silueta: perpendicular al eje del brazo
+    // y a la línea de visión hacia la pieza.
+    final vista = position.clone()..normalize();
+    final silueta = n.clone()..cross(vista);
+    if (ancho.length < 1e-6 || silueta.length < 1e-6) return 1;
+    ancho.normalize();
+    silueta.normalize();
+    final grosor = n.clone()..cross(ancho);
+
+    final c = ancho.dot(silueta);
+    final g = grosor.dot(silueta) * _occluderFlatness;
+    return math.sqrt(c * c + g * g).clamp(_occluderFlatness, 1.0);
   }
 
   /// Sitúa el cilindro de oclusión sobre la extremidad.
