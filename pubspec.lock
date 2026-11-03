@@ -639,7 +639,7 @@ packages:
     source: hosted
     version: "0.3.0"
   three_js_advanced_loaders:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: three_js_advanced_loaders
       sha256: fab9ade9ee16c8c43ad98783eb87090f1342a74e987a5e5329bf67f42d07cef9

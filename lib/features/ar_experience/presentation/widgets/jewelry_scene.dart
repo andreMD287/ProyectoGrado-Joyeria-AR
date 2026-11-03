@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:three_js/three_js.dart' as three;
+import 'package:three_js_advanced_loaders/rgbe_loader.dart' show RGBELoader;
 
 import '../../../../core/math/geometry.dart';
 import '../../../../core/math/ring_geometry.dart';
@@ -190,6 +191,28 @@ class _JewelrySceneState extends State<JewelryScene> {
   Future<void> _setup() async {
     final viewer = _viewer!;
     viewer.scene = three.Scene();
+
+    // Reflejos PBR de estudio, manteniendo transparente el fondo AR.
+    var hasEnvironment = false;
+    final hdrLoader = RGBELoader();
+
+    try {
+      final hdr = await hdrLoader.fromAsset(
+        'assets/environments/cartier_studio.hdr',
+      );
+
+      if (hdr != null) {
+        hdr.mapping = three.EquirectangularReflectionMapping;
+        viewer.scene.environment = hdr;
+        viewer.scene.environmentIntensity = 0.8;
+        hasEnvironment = true;
+        debugPrint('HDR AR cargado correctamente');
+      }
+    } catch (error) {
+      debugPrint('Error cargando HDR AR: $error');
+    } finally {
+      hdrLoader.dispose();
+    }
     final aspect = viewer.width / viewer.height;
     viewer.camera = three.PerspectiveCamera(
       _fovYFor(aspect),
@@ -273,7 +296,7 @@ class _JewelrySceneState extends State<JewelryScene> {
 
     // Un contenedor propio evita pelear con la transformación que el modelo ya
     // trae: el hijo centra, el padre posiciona y orienta.
-    _limitarMetalicidad(model);
+    _limitarMetalicidad(model, hasEnvironment: hasEnvironment);
 
     final holder = three.Object3D()..add(model);
     viewer.scene.add(holder);
@@ -283,12 +306,19 @@ class _JewelrySceneState extends State<JewelryScene> {
   }
 
   /// Recorta la metalicidad de los materiales a [_metalnessMax].
-  static void _limitarMetalicidad(three.Object3D model) {
+  static void _limitarMetalicidad(
+    three.Object3D model, {
+    required bool hasEnvironment,
+  }) {
     void limitar(three.Material? material) {
       if (material is three.GroupMaterial) {
         material.children.forEach(limitar);
       } else if (material is three.MeshStandardMaterial) {
-        material.metalness = math.min(material.metalness, _metalnessMax);
+        // Con HDR, conservamos la metalicidad PBR del archivo.
+        // Sin HDR, mantenemos el limite anterior para evitar metal negro.
+        if (!hasEnvironment) {
+          material.metalness = math.min(material.metalness, _metalnessMax);
+        }
       }
     }
 
