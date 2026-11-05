@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel;
@@ -7,15 +9,20 @@ import '../../domain/entities/landmark_frame.dart';
 import '../../domain/entities/neck_observation.dart';
 import 'landmark_detector.dart';
 
-/// Cara y cuello para collares, medidos en Android por `NeckTracker` (Face
-/// Landmarker + segmentación multiclase de MediaPipe).
+/// Cara y cuello para collares, medidos con MediaPipe (Face Landmarker +
+/// segmentación multiclase) por `NeckTracker` en Android y
+/// `NeckTrackingHandler` en iOS, con el mismo protocolo de canal.
 ///
-/// Es de petición y respuesta: se entrega el frame y vuelve lo medido sobre
-/// él (la cara) junto con la última forma del cuello que haya terminado la
-/// segmentación. Funciona desde el isolate de detección porque solo hace
-/// llamadas salientes al canal, que el isolate secundario sí admite.
+/// Va en tubería: se entrega el frame y vuelve enseguida el **último**
+/// resultado del nativo, que procesa siempre el frame más reciente. Cada
+/// resultado trae un número de secuencia; uno ya entregado vuelve como vacío,
+/// para no alimentar los filtros con muestras repetidas. Funciona desde el
+/// isolate de detección porque solo hace llamadas salientes al canal, que el
+/// isolate secundario sí admite.
 class NeckDetectorDataSource implements LandmarkDetector {
   static const _channel = MethodChannel('jewelry_ar/neck');
+
+  int? _lastSeq;
 
   @override
   Future<void> initialize() => _channel.invokeMethod<void>('start');
@@ -33,7 +40,16 @@ class NeckDetectorDataSource implements LandmarkDetector {
       'rotation': sensorOrientation,
     });
     if (result == null) return LandmarkFrame.empty;
-    return neckFrameFromNative(result, sensorOrientation);
+    final seq = (result['seq'] as num?)?.toInt();
+    if (seq != null && seq == _lastSeq) return LandmarkFrame.empty;
+    _lastSeq = seq;
+    // En iOS la cámara ya entrega el frame vertical y espejado como la vista
+    // previa (igual que asume ML Kit ahí), así que no se espeja de nuevo.
+    return neckFrameFromNative(
+      result,
+      sensorOrientation,
+      mirror: Platform.isIOS ? false : null,
+    );
   }
 
   @override
@@ -42,10 +58,10 @@ class NeckDetectorDataSource implements LandmarkDetector {
 
 /// Convierte la respuesta de `NeckTracker` al espacio de la vista previa.
 ///
-/// El nativo entrega el frame vertical **sin espejar**. La vista previa de la
-/// cámara frontal sí va espejada, salvo con el sensor a 90°: es el mismo
-/// criterio que `normalizeMlKitLandmarkToPreview`, con el que se validaron
-/// aretes y collares.
+/// En Android el nativo entrega el frame vertical **sin espejar**. La vista
+/// previa de la cámara frontal sí va espejada, salvo con el sensor a 90°: es
+/// el mismo criterio que `normalizeMlKitLandmarkToPreview`, con el que se
+/// validaron aretes y collares. [mirror] lo fuerza (iOS: `false`).
 ///
 /// Además de [LandmarkFrame.neck], llena [LandmarkFrame.landmarks] con los
 /// puntos medidos (mentón, mejillas, nariz y, si hay cuello, sus bordes y el
@@ -53,8 +69,9 @@ class NeckDetectorDataSource implements LandmarkDetector {
 @visibleForTesting
 LandmarkFrame neckFrameFromNative(
   Map<String, Object?> result,
-  int sensorOrientation,
-) {
+  int sensorOrientation, {
+  bool? mirror,
+}) {
   if (result['face'] != true) return LandmarkFrame.empty;
   final points = result['points'];
   final faceWidth = (result['faceWidth'] as num?)?.toDouble();
@@ -63,8 +80,8 @@ LandmarkFrame neckFrameFromNative(
   }
 
   final rotation = ((sensorOrientation % 360) + 360) % 360;
-  final mirror = rotation != 90;
-  double mx(double x) => mirror ? 1 - x : x;
+  final espejar = mirror ?? rotation != 90;
+  double mx(double x) => espejar ? 1 - x : x;
 
   Landmark punto(int i) => Landmark(
         mx((points[i * 3] as num).toDouble()),

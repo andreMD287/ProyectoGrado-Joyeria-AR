@@ -5,8 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.google.mediapipe.framework.image.BitmapImageBuilder
@@ -16,6 +14,7 @@ import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
 import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter
+import io.flutter.FlutterInjector
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -45,12 +44,29 @@ import kotlin.math.sqrt
  *
  * Todo sale normalizado al frame **ya rotado a vertical y sin espejar**; el
  * espejo de la cámara frontal lo aplica Dart, como con el resto de detectores.
+ *
+ * **En tubería.** `process` deja el frame y responde enseguida con el último
+ * resultado; un hilo procesa siempre el frame más reciente y descarta los que
+ * se acumulan. Antes cada frame esperaba su respuesta antes de mandar el
+ * siguiente y la cara iba a 6–7 Hz aunque solo tarda 40–60 ms (medido en el
+ * Galaxy A15, 2026-11-05).
+ *
+ * **Modelos precargados.** Se crean al abrir la app y no se cierran al salir de
+ * la prueba virtual: el segmentador en GPU tardaba ~20 s en arrancar y, como se
+ * cerraba, la espera se repetía en cada entrada. Mientras la GPU no está lista
+ * se segmenta en CPU.
  */
 class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandler {
     companion object {
         private const val TAG = "NeckTracker"
-        private const val FACE_MODEL = "face_landmarker.task"
-        private const val SEG_MODEL = "selfie_multiclass_256x256.tflite"
+        // Assets de Flutter (`assets/mediapipe/`), compartidos con iOS. Dentro
+        // del APK quedan bajo `flutter_assets/`; la clave la da el loader.
+        private val FACE_MODEL = flutterAsset("face_landmarker.task")
+        private val SEG_MODEL = flutterAsset("selfie_multiclass_256x256.tflite")
+
+        private fun flutterAsset(name: String): String =
+            FlutterInjector.instance().flutterLoader()
+                .getLookupKeyForAsset("assets/mediapipe/$name")
 
         // Índices de la malla facial.
         private const val CHIN = 152
@@ -64,17 +80,41 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
 
         /** Pasado este tiempo, una medida del cuello ya no describe la pose. */
         private const val NECK_MAX_AGE_MS = 1500L
+
+        /** Pasado este tiempo, el último resultado de la cara ya no se entrega. */
+        private const val RESULT_MAX_AGE_MS = 500L
     }
 
-    private val faceExec = Executors.newSingleThreadExecutor()
+    private class Frame(val nv: ByteArray, val w: Int, val h: Int, val stride: Int, val rotation: Int)
 
-    // El delegado GPU exige crear y usar el segmentador en el mismo hilo.
-    private val segExec = Executors.newSingleThreadExecutor()
-    private val main = Handler(Looper.getMainLooper())
+    private val faceExec = Executors.newSingleThreadExecutor { r -> Thread(r, "neck-face") }
+
+    // El delegado GPU exige crear y usar el segmentador en el mismo hilo. Baja
+    // prioridad: su arranque compila para la GPU y no debe trabar la app.
+    private val segExec = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "neck-seg-gpu").apply { priority = Thread.MIN_PRIORITY }
+    }
+    private val segCpuExec = Executors.newSingleThreadExecutor { r -> Thread(r, "neck-seg-cpu") }
 
     private var face: FaceLandmarker? = null
     private var segmenter: ImageSegmenter? = null
+    private var cpuSegmenter: ImageSegmenter? = null
+    @Volatile private var gpuReady = false
+    @Volatile private var gpuFailed = false
     private val segBusy = AtomicBoolean(false)
+
+    // Tubería de la cara: el frame más reciente pendiente y el último resultado.
+    private val pendingLock = Any()
+    private var pending: Frame? = null
+    private val faceBusy = AtomicBoolean(false)
+    @Volatile private var latest: Map<String, Any>? = null
+    @Volatile private var latestAt = 0L
+    private var seq = 0L
+
+    init {
+        faceExec.execute { ensureFace() }
+        segExec.execute { ensureGpuSegmenter() }
+    }
 
     @Volatile private var active = false
     @Volatile private var neck: Map<String, Any>? = null
@@ -90,6 +130,7 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
     private var statsStart = 0L
     private var faceFrames = 0
     private var faceMsSum = 0L
+    private var convMsSum = 0L
     @Volatile private var segFrames = 0
     @Volatile private var segMsSum = 0L
     @Volatile private var segOk = 0
@@ -100,10 +141,12 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
             "start" -> {
                 active = true
                 neck = null
+                latest = null
                 accepted = null
                 candidate = null
+                // No-ops si ya se precargaron al abrir la app.
                 faceExec.execute { ensureFace() }
-                segExec.execute { ensureSegmenter() }
+                segExec.execute { ensureGpuSegmenter() }
                 result.success(null)
             }
             "process" -> {
@@ -116,28 +159,18 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
                     result.success(null)
                     return
                 }
-                faceExec.execute {
-                    val out = try {
-                        if (active) process(bytes, w, h, stride, rotation) else null
-                    } catch (e: Throwable) {
-                        Log.w(TAG, "fallo al procesar el frame", e)
-                        null
-                    }
-                    main.post { result.success(out) }
-                }
+                synchronized(pendingLock) { pending = Frame(bytes, w, h, stride, rotation) }
+                if (faceBusy.compareAndSet(false, true)) faceExec.execute { drain() }
+                val out = latest
+                val fresh = SystemClock.uptimeMillis() - latestAt < RESULT_MAX_AGE_MS
+                result.success(if (out != null && fresh) out else null)
             }
             "stop" -> {
+                // Los modelos se quedan cargados para la próxima entrada.
                 active = false
                 neck = null
-                faceExec.execute {
-                    face?.close()
-                    face = null
-                    lastTs = 0
-                }
-                segExec.execute {
-                    segmenter?.close()
-                    segmenter = null
-                }
+                latest = null
+                synchronized(pendingLock) { pending = null }
                 result.success(null)
             }
             else -> result.notImplemented()
@@ -168,45 +201,89 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         }
     }
 
-    private fun ensureSegmenter(): ImageSegmenter? {
-        segmenter?.let { return it }
-        for (delegate in listOf(Delegate.GPU, Delegate.CPU)) {
-            try {
-                val s = ImageSegmenter.createFromOptions(
-                    context,
-                    ImageSegmenter.ImageSegmenterOptions.builder()
-                        .setBaseOptions(
-                            BaseOptions.builder()
-                                .setModelAssetPath(SEG_MODEL)
-                                .setDelegate(delegate)
-                                .build(),
-                        )
-                        .setRunningMode(RunningMode.IMAGE)
-                        .setOutputCategoryMask(true)
-                        .setOutputConfidenceMasks(false)
+    private fun createSegmenter(delegate: Delegate): ImageSegmenter =
+        ImageSegmenter.createFromOptions(
+            context,
+            ImageSegmenter.ImageSegmenterOptions.builder()
+                .setBaseOptions(
+                    BaseOptions.builder()
+                        .setModelAssetPath(SEG_MODEL)
+                        .setDelegate(delegate)
                         .build(),
                 )
-                Log.i(TAG, "segmentador listo con delegado $delegate")
-                segmenter = s
-                return s
+                .setRunningMode(RunningMode.IMAGE)
+                .setOutputCategoryMask(true)
+                .setOutputConfidenceMasks(false)
+                .build(),
+        )
+
+    /** Solo en [segExec]. */
+    private fun ensureGpuSegmenter() {
+        if (segmenter != null || gpuFailed) return
+        val t0 = SystemClock.uptimeMillis()
+        try {
+            segmenter = createSegmenter(Delegate.GPU)
+            gpuReady = true
+            Log.i(TAG, "segmentador GPU listo en ${SystemClock.uptimeMillis() - t0} ms")
+            // Ya no hace falta el de respaldo.
+            segCpuExec.execute {
+                cpuSegmenter?.close()
+                cpuSegmenter = null
+            }
+        } catch (e: Throwable) {
+            gpuFailed = true
+            Log.w(TAG, "segmentador GPU no disponible, se usa CPU: $e")
+        }
+    }
+
+    /** Solo en [segCpuExec]. */
+    private fun ensureCpuSegmenter(): ImageSegmenter? {
+        cpuSegmenter?.let { return it }
+        return try {
+            createSegmenter(Delegate.CPU).also { cpuSegmenter = it }
+        } catch (e: Throwable) {
+            Log.e(TAG, "no se pudo crear el segmentador en CPU", e)
+            null
+        }
+    }
+
+    /** Procesa siempre el frame más reciente hasta que no quede ninguno. */
+    private fun drain() {
+        while (true) {
+            val f = synchronized(pendingLock) { pending.also { pending = null } }
+            if (f == null) {
+                faceBusy.set(false)
+                // Pudo llegar uno justo entre la lectura y soltar el turno.
+                val queda = synchronized(pendingLock) { pending != null }
+                if (queda && faceBusy.compareAndSet(false, true)) continue
+                return
+            }
+            val out = try {
+                if (active) process(f.nv, f.w, f.h, f.stride, f.rotation) else null
             } catch (e: Throwable) {
-                Log.w(TAG, "segmentador con $delegate no disponible: $e")
+                Log.w(TAG, "fallo al procesar el frame", e)
+                null
+            }
+            if (out != null && active) {
+                seq++
+                latest = out + ("seq" to seq)
+                latestAt = SystemClock.uptimeMillis()
             }
         }
-        return null
     }
 
     private fun process(nv: ByteArray, w: Int, h: Int, stride: Int, rotation: Int): Map<String, Any> {
         val landmarker = ensureFace() ?: return mapOf("face" to false)
         val t0 = SystemClock.uptimeMillis()
         val frame = toUprightBitmap(nv, w, h, stride, rotation)
+        val tConv = SystemClock.uptimeMillis()
 
         var ts = SystemClock.uptimeMillis()
         if (ts <= lastTs) ts = lastTs + 1
         lastTs = ts
         val result = landmarker.detectForVideo(BitmapImageBuilder(frame).build(), ts)
         val lms = result.faceLandmarks().firstOrNull()
-        countFace(SystemClock.uptimeMillis() - t0)
+        countFace(tConv - t0, SystemClock.uptimeMillis() - tConv)
         if (lms == null) return mapOf("face" to false)
 
         val points = DoubleArray(FACE_POINTS.size * 3)
@@ -225,9 +302,12 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
             )
             val chinX = points[0]
             val chinY = points[1]
-            segExec.execute {
+            val gpu = gpuReady
+            val exec = if (gpu) segExec else segCpuExec
+            exec.execute {
                 try {
-                    if (active) measureNeck(small, chinX, chinY, faceWidth)
+                    val seg = if (gpu) segmenter else ensureCpuSegmenter()
+                    if (active && seg != null) measureNeck(seg, small, chinX, chinY, faceWidth)
                 } catch (e: Throwable) {
                     Log.w(TAG, "fallo al segmentar", e)
                 } finally {
@@ -257,8 +337,9 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         return sqrt(dx * dx + dy * dy + dz * dz)
     }
 
-    private fun measureNeck(small: Bitmap, chinX: Double, chinY: Double, faceWidth: Double) {
-        val seg = ensureSegmenter() ?: return
+    private fun measureNeck(
+        seg: ImageSegmenter, small: Bitmap, chinX: Double, chinY: Double, faceWidth: Double,
+    ) {
         val t0 = SystemClock.uptimeMillis()
         val result = seg.segment(BitmapImageBuilder(small).build())
         val maskImage = result.categoryMask().orElse(null) ?: return
@@ -329,22 +410,26 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         return false
     }
 
-    private fun countFace(ms: Long) {
+    private fun countFace(convMs: Long, ms: Long) {
         val now = SystemClock.uptimeMillis()
         if (statsStart == 0L) statsStart = now
         faceFrames++
         faceMsSum += ms
+        convMsSum += convMs
         val elapsed = now - statsStart
         if (elapsed >= 5000) {
             val seg = segFrames
             Log.i(
                 TAG,
-                "cara ${"%.1f".format(faceFrames * 1000f / elapsed)} Hz (${faceMsSum / max(1, faceFrames)} ms), " +
-                    "cuello ${"%.1f".format(seg * 1000f / elapsed)} Hz (${segMsSum / max(1, seg)} ms, $segOk validas)",
+                "cara ${"%.1f".format(faceFrames * 1000f / elapsed)} Hz " +
+                    "(${convMsSum / max(1, faceFrames)} ms conversion + ${faceMsSum / max(1, faceFrames)} ms modelo), " +
+                    "cuello ${"%.1f".format(seg * 1000f / elapsed)} Hz en ${if (gpuReady) "GPU" else "CPU"} " +
+                    "(${segMsSum / max(1, seg)} ms, $segOk validas)",
             )
             statsStart = now
             faceFrames = 0
             faceMsSum = 0
+            convMsSum = 0
             segFrames = 0
             segMsSum = 0
             segOk = 0

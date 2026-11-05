@@ -44,10 +44,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// guardia `_busy` ya impide encolar; se mantiene el techo de 10 FPS con el
   /// que se validaron aretes y collares.
   ///
-  /// Cuello (MediaPipe): la cara tarda 15–60 ms en CPU y el guardia `_busy`
-  /// ya espera a cada respuesta, así que el techo solo añadiría retardo.
-  static int _minIntervalMsFor(DetectorKind kind) =>
-      kind == DetectorKind.hand || kind == DetectorKind.neck ? 33 : 100;
+  /// Cuello (MediaPipe): va en tubería y responde enseguida con el último
+  /// resultado, así que el techo solo limita cuántos frames se copian al
+  /// nativo. 25 por segundo sobran para una cara que se procesa a ~15.
+  static int _minIntervalMsFor(DetectorKind kind) => switch (kind) {
+        DetectorKind.hand => 33,
+        DetectorKind.neck => 40,
+        _ => 100,
+      };
 
   /// Frecuencia de detección de referencia para dimensionar el margen de
   /// pérdida de tracking.
