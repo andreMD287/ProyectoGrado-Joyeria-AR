@@ -1004,15 +1004,29 @@ class _ModelOverlay extends ConsumerWidget {
 
   bool get _isNecklace => piece.categoria == JewelryCategory.necklace;
 
-  /// Ancho de hombros en pixeles, tal como se ven, para collares.
+  /// Columna del cuello en pixeles, para collares.
   ///
-  /// Con el torso girado se acortan por `cos θ` y el cuello no, asi que en
-  /// teoria habria que deshacer el escorzo. **Se probo y empeora** (2026-10-28):
-  /// el giro estimado no es tan preciso, el hueco crecia hasta un 43 % y la
-  /// cadena quedaba colgando sobre el pecho, por fuera del cuello.
-  double? _shoulderWidthPx(PreviewFit fit, AnchorPose? anchor) {
+  /// Con el cuello medido (Android) la da la estrategia en `limbWidth`. Si no,
+  /// la `scale` es el ancho de hombros y el cuello se deduce con
+  /// [_neckToShoulders]. Con el torso girado los hombros se acortan por
+  /// `cos θ` y el cuello no, asi que en teoria habria que deshacer el escorzo:
+  /// **se probo y empeora** (2026-10-28), el giro estimado no es tan preciso,
+  /// el hueco crecia hasta un 43 % y la cadena quedaba colgando sobre el
+  /// pecho, por fuera del cuello.
+  double? _neckColumnPx(PreviewFit fit, AnchorPose? anchor) {
     final scale = anchor?.scale;
     if (!_isNecklace || scale == null) return null;
+    final medido = anchor?.limbWidth;
+    if (medido != null) return fit.lengthOf(medido);
+    return fit.lengthOf(scale) * _neckToShoulders;
+  }
+
+  /// Base del cuello en pixeles, solo cuando se midio (ver [_neckColumnPx]).
+  double? _neckBasePx(PreviewFit fit, AnchorPose? anchor) {
+    final scale = anchor?.scale;
+    if (!_isNecklace || scale == null || anchor?.limbWidth == null) {
+      return null;
+    }
     return fit.lengthOf(scale);
   }
 
@@ -1040,8 +1054,6 @@ class _ModelOverlay extends ConsumerWidget {
         ? _fallbackSize
         : (fit.lengthOf(scale) * _scaleFactor).clamp(_minSize, _maxSize);
 
-    final hombros = _shoulderWidthPx(fit, anchor);
-
     return model.when(
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
@@ -1060,7 +1072,8 @@ class _ModelOverlay extends ConsumerWidget {
           rollOffset: _rollOffset,
           showOccluder: showOccluder,
           necklace: _isNecklace,
-          neckDiameterPx: hombros == null ? null : hombros * _neckToShoulders,
+          neckDiameterPx: _neckColumnPx(fit, anchor),
+          neckBasePx: _neckBasePx(fit, anchor),
         ),
       ),
     );

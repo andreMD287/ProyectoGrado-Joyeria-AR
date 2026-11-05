@@ -62,9 +62,14 @@ class JewelryScene extends StatefulWidget {
   /// un aro, y se ocluye con un proxy de cuello (ver `_setupNecklace`).
   final bool necklace;
 
-  /// Ancho del cuello en píxeles del área, para collares. El hueco del collar
-  /// se ajusta a él y el proxy de cuello lo reproduce.
+  /// Ancho de la columna del cuello en píxeles del área, para collares. Es lo
+  /// que reproduce el proxy de cuello.
   final double? neckDiameterPx;
+
+  /// Ancho de la base del cuello en píxeles del área, donde apoya la cadena:
+  /// el hueco del collar se ajusta a ella. `null` si no se midió; entonces se
+  /// deduce de [neckDiameterPx].
+  final double? neckBasePx;
 
   const JewelryScene({
     super.key,
@@ -78,6 +83,7 @@ class JewelryScene extends StatefulWidget {
     this.showOccluder = false,
     this.necklace = false,
     this.neckDiameterPx,
+    this.neckBasePx,
   });
 
   @override
@@ -180,6 +186,30 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// Alambre de diagnóstico del proxy de cuello del collar.
   three.Object3D? _necklaceWire;
 
+  /// Proxy de cuello del collar; se ajusta en cada pose a la columna medida.
+  three.Object3D? _necklaceNeck;
+
+  /// Holgura del hueco del collar sobre la **base** del cuello medida. La base
+  /// es justo donde la cadena sale de detrás del cuello, así que el hueco
+  /// apenas la supera.
+  static const double _holguraSobreBase = 1.05;
+
+  /// Radio del proxy de cuello respecto al del hueco del collar, cuando la
+  /// base del cuello está medida.
+  ///
+  /// Con la columna medida (~0,87 de la base) el proxy quedaba más angosto
+  /// que el aro, y el tramo que va de los costados hacia la nuca —que en los
+  /// modelos sube— asomaba a los lados del cuello como dos cuernos hasta la
+  /// mandíbula, sobre todo de cerca (visto en dispositivo, 2026-11-05). Con
+  /// 0,94 la cadena se escondía demasiado pronto a los costados; 0,88 queda
+  /// entre las dos y fue lo que se prefirió en dispositivo.
+  ///
+  /// Con el eje del cuello corrido hacia la nuca, un radio así cumple las dos
+  /// cosas: de frente tapa la cadena desde unos 20° más allá del costado, y
+  /// girado deja ver la del lado de la cámara hasta unos 50° más allá, porque
+  /// ese tramo queda por fuera del proxy y no dentro.
+  static const double _proxySobreHueco = 0.88;
+
   /// Holgura del hueco del collar sobre el cuello. El proxy de cuello mide el
   /// hueco dividido por esto.
   ///
@@ -224,10 +254,14 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// inclinación real del cuerpo sin torcerse con el ruido.
   static const double _necklaceRollFollow = 0.3;
 
-  /// Giro del torso por debajo del cual el collar se queda de frente. De
-  /// frente, la estimación oscila unos ±4° y movía la punta de lado a lado con
-  /// la persona quieta.
-  static const double _necklaceYawDeadZoneDeg = 5;
+  /// Giro del torso por debajo del cual el collar se queda de frente.
+  ///
+  /// La zona muerta es **suave**: entre una y dos veces este valor el giro
+  /// crece del 0 al valor medido, y por encima pasa entero. Restarla siempre
+  /// le quitaba esos grados a los giros grandes, y girado el collar seguía
+  /// mirando a la cámara. De frente la estimación queda en unos ±10°
+  /// estables según la prenda (medido en dispositivo, 2026-11-05).
+  static const double _necklaceYawDeadZoneDeg = 10;
 
   /// Alto del proxy de cuello, en anchos del hueco: debe llegar hasta la
   /// barbilla para tapar la vuelta trasera en cualquier inclinación.
@@ -449,6 +483,7 @@ class _JewelrySceneState extends State<JewelryScene> {
       ..renderOrder = -1
       ..position.setValues(0, base + altoCuello / 2, 0);
     holder.add(cuello);
+    _necklaceNeck = cuello;
 
     final wire = three.Mesh(
       cuello.geometry,
@@ -488,23 +523,46 @@ class _JewelrySceneState extends State<JewelryScene> {
       return;
     }
 
-    final factor =
-        cuelloPx * pxToWorld * _holguraDelCollar / collar.holeWidth;
+    // Sin base medida (iOS) se conserva el ajuste anterior: hueco igual a la
+    // columna por [_holguraDelCollar].
+    final basePx = widget.neckBasePx ??
+        cuelloPx * _holguraDelCollar / _holguraSobreBase;
+    final factor = basePx * pxToWorld * _holguraSobreBase / collar.holeWidth;
     jewel.scale.setValues(factor, factor, factor);
+
+    // Con la base medida, el proxy se lleva a [_proxySobreHueco] del hueco.
+    // Sin ella (iOS) se queda como se construyó.
+    if (widget.neckBasePx != null) {
+      const k = _proxySobreHueco * _holguraDelCollar;
+      _necklaceNeck?.scale.setValues(k, 1, k);
+    }
 
     // Primero el giro del torso alrededor de su vertical y después la
     // inclinación de los hombros en el plano de la imagen.
     final yaw = anchor.yawRadians ?? 0;
     final zonaMuerta = _necklaceYawDeadZoneDeg * math.pi / 180;
-    final yawUtil = yaw.sign * math.max(0.0, yaw.abs() - zonaMuerta);
+    final yawUtil = yaw.abs() <= zonaMuerta
+        ? 0.0
+        : yaw.abs() >= 2 * zonaMuerta
+            ? yaw
+            : yaw.sign * 2 * (yaw.abs() - zonaMuerta);
+    // El giro se mide sobre la imagen: es relativo a la línea de visión hacia
+    // el cuello, no al eje de la cámara. La cámara virtual vuelve a aplicar la
+    // perspectiva, que con el cuello a un lado del centro empuja el frente del
+    // collar hacia afuera; sin descontarla, ese empuje anulaba el giro medido
+    // y el collar quedaba mirando a la cámara en vez de hacia donde mira el
+    // cuerpo (visto en dispositivo, 2026-11-05: girado, con el cuello a la
+    // izquierda, la caída quedaba recta).
+    final linea = math.atan2(jewel.position.x, -jewel.position.z);
     final giroTorso = three.Quaternion()
-      ..setFromAxisAngle(three.Vector3(0, 1, 0), yawUtil);
+      ..setFromAxisAngle(three.Vector3(0, 1, 0), yawUtil - linea);
     final inclinacion = three.Quaternion()
       ..setFromAxisAngle(
         three.Vector3(0, 0, 1),
         -anchor.rollRadians * _necklaceRollFollow,
       );
     inclinacion.multiply(giroTorso);
+
     jewel.quaternion.setFrom(inclinacion);
   }
 

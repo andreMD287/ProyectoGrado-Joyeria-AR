@@ -5,10 +5,17 @@ import '../../../../core/math/geometry.dart';
 import '../entities/anchor_pose.dart';
 import '../entities/landmark.dart';
 import '../entities/landmark_frame.dart';
+import '../entities/neck_observation.dart';
 import 'tracking_strategy.dart';
 
-/// Collares: ancla en la **base del cuello**, a partir de los hombros
-/// (landmarks 11 y 12 de ML Kit Pose). Validado en el spike B2.
+/// Collares: ancla en la **base del cuello**.
+///
+/// Hay dos caminos según lo que entregue el detector:
+///
+/// - **Cuello medido** ([LandmarkFrame.neck], Android): ver [_fromNeck]. Es el
+///   principal.
+/// - **Hombros de ML Kit Pose** (iOS): lo que sigue, validado en el spike B2.
+///   El cuello se deduce con proporciones fijas.
 ///
 /// - **Posición:** a lo largo de la línea de hombros, en el eje del cuello,
 ///   promediando lo que indican las orejas y la nariz (ver [neckBehindEars] y
@@ -99,6 +106,37 @@ class NecklaceStrategy implements TrackingStrategy {
   /// ML Kit adivina su profundidad.
   final double maxYaw;
 
+  /// Cuánto queda el centro del escote por delante del eje del cuello, en
+  /// radios de la base del cuello, cuando el escote está a la altura de la
+  /// base. Con 1,0 el giro salía ~25° con el torso a unos 40° y el collar
+  /// seguía mirando a la cámara (medido en dispositivo, 2026-11-05): de lado
+  /// se ve poco del frente y el corrimiento se subestima. Con el torso girado `θ` se ve corrido `d · sin θ` respecto al eje
+  /// (ver [_fromNeck]).
+  final double frontAhead;
+
+  /// Cuánto avanza el pecho por cada unidad que el escote cae por debajo de la
+  /// base del cuello: el centro de un escote en V queda sobre el esternón, más
+  /// adelante que la garganta.
+  final double chestSlope;
+
+  /// Fracción del giro de la cabeza que se toma como giro del torso cuando no
+  /// se ve el escote. La cabeza suele girar más que el cuerpo, y al mirar la
+  /// pantalla vuelve hacia la cámara.
+  final double headYawFollow;
+
+  /// Columna del cuello respecto a su base cuando la mandíbula no deja medir
+  /// la columna. La base se abre hacia los trapecios.
+  final double columnToBase;
+
+  /// Giro de cabeza a partir del cual se confía en el centro de la columna
+  /// del cuello como eje (ver [_fromNeck]).
+  final double minHeadYawForColumn;
+
+  /// Base del cuello supuesta mientras la segmentación no da la primera
+  /// medida: su ancho en anchos de cara y su altura bajo el mentón.
+  final double defaultBaseToFace;
+  final double defaultBaseBelowChin;
+
   const NecklaceStrategy({
     this.minConfidence = 0.5,
     this.neckRaise = 0.18,
@@ -109,13 +147,20 @@ class NecklaceStrategy implements TrackingStrategy {
     this.neckBehindEars = 0.22,
     this.noseAhead = 0.56,
     this.yawDeadZone = 5 * math.pi / 180,
+    this.frontAhead = 0.75,
+    this.chestSlope = 0.3,
+    this.headYawFollow = 0.6,
+    this.columnToBase = 0.87,
+    this.minHeadYawForColumn = 8 * math.pi / 180,
+    this.defaultBaseToFace = 0.85,
+    this.defaultBaseBelowChin = 0.25,
   });
 
   @override
   JewelryCategory get category => JewelryCategory.necklace;
 
   @override
-  DetectorKind get detectorKind => DetectorKind.pose;
+  DetectorKind get detectorKind => DetectorKind.neck;
 
   @override
   void reset() {}
@@ -125,6 +170,9 @@ class NecklaceStrategy implements TrackingStrategy {
     LandmarkFrame frame, {
     double imageAspect = 1.0,
   }) {
+    final cuello = frame.neck;
+    if (cuello != null) return _fromNeck(cuello, imageAspect);
+
     // ML Kit Pose no entrega reconstruccion metrica: solo landmarks de imagen.
     final landmarks = frame.landmarks;
     if (landmarks.length <= rightShoulder || imageAspect <= 0) return null;
@@ -201,6 +249,124 @@ class NecklaceStrategy implements TrackingStrategy {
       scale: width,
       yawRadians: yaw,
       confidence: math.min(lv, rv),
+    );
+  }
+
+  /// Ancla a partir del cuello **medido** sobre la imagen.
+  ///
+  /// La forma del cuello llega unas cuatro veces por segundo y la cara en cada
+  /// frame, así que la forma se expresa respecto a la cara del frame en que se
+  /// midió (mentón y ancho de cara) y se lleva a la cara actual. Así el collar
+  /// sigue a la persona sin esperar a la segmentación.
+  ///
+  /// - **Posición:** el punto medio entre los dos lados donde el cuello toca la
+  ///   ropa, que es por donde sale la cadena de detrás del cuello. Es el eje
+  ///   del cuello: la silueta de un cilindro queda centrada en su eje aunque
+  ///   gire.
+  /// - **Escala ([AnchorPose.scale]):** el ancho de esa base, al que se ajusta
+  ///   el hueco del collar. **[AnchorPose.limbWidth]:** el de la columna del
+  ///   cuello, más delgada, que es lo que ocluye.
+  /// - **Giro del torso:** el centro del escote está en la línea media del
+  ///   pecho, por delante del eje del cuello una distancia `d`; con el torso
+  ///   girado `θ` se ve corrido `d · sin θ`. Mide el cuerpo, no la cabeza, que
+  ///   al mirar la pantalla vuelve hacia la cámara. Sin escote a la vista se
+  ///   usa una fracción del giro de la cabeza ([headYawFollow]).
+  /// - **Inclinación:** la de la cara; quien renderiza solo sigue una fracción.
+  ///
+  /// Se trabaja en el espacio isótropo (y dividido por el aspecto).
+  AnchorPose? _fromNeck(NeckObservation o, double imageAspect) {
+    final caraW = o.faceWidth;
+    if (caraW <= 0 || imageAspect <= 0) return null;
+    final menX = o.chin.x, menY = o.chin.y / imageAspect;
+
+    final dxMejillas = o.cheekRight.x - o.cheekLeft.x;
+    // Mismo convenio que la escena: positivo cuando el frente gira hacia la
+    // derecha de la pantalla, o sea cuando la mejilla de la derecha se aleja
+    // (la `z` de la malla crece al alejarse).
+    final giroCabeza =
+        math.atan2(o.cheekRight.z - o.cheekLeft.z, dxMejillas);
+    final roll = normalizeAxisAngle(math.atan2(
+      (o.cheekRight.y - o.cheekLeft.y) / imageAspect,
+      dxMejillas,
+    ));
+
+    final forma = o.neck;
+    double izqX, izqY, derX, derY, columna;
+    double? frenteX, frenteY, ejeX;
+    if (forma != null && forma.refFaceWidth > 0) {
+      final k = caraW / forma.refFaceWidth;
+      final refX = forma.refChinX, refY = forma.refChinY / imageAspect;
+      double llevarX(double x) => menX + (x - refX) * k;
+      double llevarY(double y) => menY + (y / imageAspect - refY) * k;
+      izqX = llevarX(forma.leftX);
+      izqY = llevarY(forma.leftY);
+      derX = llevarX(forma.rightX);
+      derY = llevarY(forma.rightY);
+      columna = forma.narrowWidth * k;
+      final cx = forma.columnX;
+      if (cx != null) ejeX = llevarX(cx);
+      final fx = forma.frontX, fy = forma.frontY;
+      if (fx != null && fy != null) {
+        frenteX = llevarX(fx);
+        frenteY = llevarY(fy);
+      }
+    } else {
+      final medio = defaultBaseToFace * caraW / 2;
+      izqX = menX - medio;
+      derX = menX + medio;
+      izqY = derY = menY + defaultBaseBelowChin * caraW;
+      columna = 0;
+    }
+
+    final base = (derX - izqX).abs();
+    if (base <= 0) return null;
+    final centroX = (izqX + derX) / 2;
+    final centroY = (izqY + derY) / 2;
+    // La columna medida solo vale si es coherente con la base.
+    final col = columna >= 0.6 * base && columna <= base
+        ? columna
+        : columnToBase * base;
+
+    // El giro se mide desde el eje del cuello. De lado, la base arrastra el
+    // trapecio de la nuca y su punto medio queda corrido hacia atrás; el
+    // centro de la columna no. Pero de frente la mandíbula deja ver muy poca
+    // columna y su centro salía hasta un tercio de la base corrido, lo que
+    // hacía saltar el giro entre 0° y ±30° con la persona quieta (medido en
+    // dispositivo, 2026-11-05). Solo se usa con la cabeza girada, corrido
+    // hacia la nuca —opuesto al giro— y dentro de un margen.
+    var eje = centroX;
+    if (ejeX != null) {
+      final corrido = ejeX - centroX;
+      if (giroCabeza.abs() >= minHeadYawForColumn &&
+          corrido * giroCabeza < 0 &&
+          corrido.abs() <= 0.25 * base) {
+        eje = ejeX;
+      }
+    }
+    final porCabeza = giroCabeza * headYawFollow;
+    double yaw;
+    double? porEscote;
+    if (frenteX != null && frenteY != null) {
+      final caida = math.max(0.0, frenteY - centroY);
+      final d = frontAhead * base / 2 + chestSlope * caida;
+      porEscote = math.asin(((frenteX - eje) / d).clamp(-0.9, 0.9));
+      // El escote subestima los giros grandes: de lado se ve poco del frente.
+      // Si la cabeza gira hacia el mismo lado y más, se toma esa fracción.
+      yaw = porEscote.sign == porCabeza.sign &&
+              porCabeza.abs() > porEscote.abs()
+          ? porCabeza
+          : porEscote;
+    } else {
+      yaw = porCabeza;
+    }
+
+    return AnchorPose(
+      position: Vec3(centroX, centroY * imageAspect, 0),
+      rollRadians: roll,
+      scale: base,
+      limbWidth: col,
+      yawRadians: yaw.clamp(-maxYaw, maxYaw),
+      confidence: 1,
     );
   }
 

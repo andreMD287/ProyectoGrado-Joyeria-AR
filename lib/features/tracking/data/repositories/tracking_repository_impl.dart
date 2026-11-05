@@ -43,8 +43,11 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// Rostro y pose (ML Kit): ahí `detect()` sí hace el trabajo pesado y el
   /// guardia `_busy` ya impide encolar; se mantiene el techo de 10 FPS con el
   /// que se validaron aretes y collares.
+  ///
+  /// Cuello (MediaPipe): la cara tarda 15–60 ms en CPU y el guardia `_busy`
+  /// ya espera a cada respuesta, así que el techo solo añadiría retardo.
   static int _minIntervalMsFor(DetectorKind kind) =>
-      kind == DetectorKind.hand ? 33 : 100;
+      kind == DetectorKind.hand || kind == DetectorKind.neck ? 33 : 100;
 
   /// Frecuencia de detección de referencia para dimensionar el margen de
   /// pérdida de tracking.
