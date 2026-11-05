@@ -43,8 +43,11 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// Rostro y pose (ML Kit): ahí `detect()` sí hace el trabajo pesado y el
   /// guardia `_busy` ya impide encolar; se mantiene el techo de 10 FPS con el
   /// que se validaron aretes y collares.
+  ///
+  /// Cuello (MediaPipe): la cara tarda 15–60 ms en CPU y el guardia `_busy`
+  /// ya espera a cada respuesta, así que el techo solo añadiría retardo.
   static int _minIntervalMsFor(DetectorKind kind) =>
-      kind == DetectorKind.hand ? 33 : 100;
+      kind == DetectorKind.hand || kind == DetectorKind.neck ? 33 : 100;
 
   /// Frecuencia de detección de referencia para dimensionar el margen de
   /// pérdida de tracking.
@@ -115,7 +118,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // quieta cuando el brazo lo esta.
         JewelryCategory.bracelet =>
           OneEuroStabilizer(minCutoff: 0.8, beta: 0.3),
-        _ => stabilizer,
+        // Collares: con la persona quieta, el ancla saltaba ~9 px en
+        // horizontal y ~12 en vertical entre detecciones (2026-10-29), y ML
+        // Kit Pose da solo ~3,5 por segundo, así que el filtro por defecto
+        // apenas la suavizaba y el collar no se quedaba quieto. El cuello se
+        // mueve despacio: corte bajo en reposo, y `beta` alto para que el
+        // filtro se abra cuando la persona se mueve de verdad.
+        JewelryCategory.necklace =>
+          OneEuroStabilizer(minCutoff: 0.3, beta: 1.0),
       };
 
   LandmarkStabilizer? _sessionStabilizer;
@@ -159,7 +169,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // Yaw de pulseras: no da vuelta completa (queda en ±90°), así que no
         // necesita el manejo circular de AngleStabilizer. Mismo afinado que
         // roll/escala como punto de partida, a validar en dispositivo.
-        _yawStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
+        //
+        // Collares: el giro del torso sale de la `z` de ML Kit, que con el
+        // torso quieto salta ±0,2 del ancho de hombros entre frames (unos
+        // ±4° tras la ganancia, medido 2026-10-28). El torso gira despacio, así que se filtra
+        // como la escala.
+        _yawStabilizer = category == JewelryCategory.necklace
+            ? ScalarStabilizer(minCutoff: 0.5, beta: 0.3)
+            : ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
         // Mucho mas suave que el resto: la `z` metrica de MediaPipe es la
         // señal mas ruidosa que consume el pipeline, y aqui no mueve un punto
         // sino la **orientacion** de la pieza, donde el ruido se ve como

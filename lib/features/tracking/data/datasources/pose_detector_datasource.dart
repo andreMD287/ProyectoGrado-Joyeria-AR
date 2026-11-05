@@ -18,7 +18,7 @@ import 'landmark_detector.dart';
 /// el intercambio de ejes en Android con rotación 90°/270°).
 ///
 /// Collares usan cámara **frontal**. Corrección de rotación solo en Android;
-/// iOS conserva `x/w`, `y/h`. `z` en escala cruda de ML Kit (overlay usa x/y).
+/// iOS conserva `x/w`, `y/h`. `z` se normaliza con el mismo ancho que `x`.
 class PoseDetectorDataSource implements LandmarkDetector {
   final PoseDetector _detector = PoseDetector(
     options: PoseDetectorOptions(mode: PoseDetectionMode.stream),
@@ -38,8 +38,9 @@ class PoseDetectorDataSource implements LandmarkDetector {
     final poses = await _detector.processImage(input);
     if (poses.isEmpty) return LandmarkFrame.empty;
 
-    // ML Kit Pose expone `z`, pero en escala cruda del modelo, no en metros:
-    // no es una reconstruccion metrica y por eso no llena esa parte.
+    // ML Kit Pose expone `z`, pero relativa a la cadera y en la escala de la
+    // imagen, no en metros: no es una reconstruccion metrica y por eso no
+    // llena esa parte.
     return LandmarkFrame(
       landmarks: _mapPose(
         poses.first,
@@ -87,7 +88,15 @@ class PoseDetectorDataSource implements LandmarkDetector {
       isFrontCamera: true,
       isIOS: Platform.isIOS,
     );
-    return Landmark(n.x, n.y, lm.z, visibility: lm.likelihood);
+    // ML Kit da `z` en la misma escala de pixeles que `x`, con origen en la
+    // cadera. Se divide por el mismo ancho que `x` para que una diferencia de
+    // profundidad entre hombros se pueda comparar con su separacion en la
+    // imagen: de esa comparacion sale el giro del torso.
+    final rotation = ((sensorOrientation % 360) + 360) % 360;
+    final anchoVertical = !Platform.isIOS && (rotation == 90 || rotation == 270)
+        ? height
+        : width;
+    return Landmark(n.x, n.y, lm.z / anchoVertical, visibility: lm.likelihood);
   }
 
   InputImage? _toInputImage(CameraImage image, int sensorOrientation) {
