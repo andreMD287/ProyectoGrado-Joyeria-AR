@@ -48,14 +48,23 @@ ImageFormatGroup imageFormatGroupFor(DetectorKind kind) => switch (kind) {
         Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
     };
 
+/// Seguimiento del cuello en iOS (`ios/Runner/NeckTrackingHandler.swift`).
+///
+/// Está escrito siguiendo la versión de Android, pero **no se ha probado en un
+/// iPhone**. Mientras esté en `false`, los collares en iOS siguen con los
+/// hombros de ML Kit Pose. Ver `docs/IOS_SEGUIMIENTO_CUELLO.md` para lo que hay
+/// que verificar antes de encenderlo.
+const bool iosNeckTrackerEnabled = false;
+
 /// Crea el detector que corresponde al tipo y a la plataforma.
 LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
       DetectorKind.hand =>
         Platform.isIOS ? IosHandDetector() : AndroidHandDetector(),
       DetectorKind.face => FaceDetectorDataSource(),
       DetectorKind.pose => PoseDetectorDataSource(),
-      DetectorKind.neck =>
-        Platform.isAndroid ? NeckDetectorDataSource() : PoseDetectorDataSource(),
+      DetectorKind.neck => Platform.isAndroid || iosNeckTrackerEnabled
+          ? NeckDetectorDataSource()
+          : PoseDetectorDataSource(),
     };
 
 /// `true` si el detector de [kind] tiene que correr en el isolate raíz.

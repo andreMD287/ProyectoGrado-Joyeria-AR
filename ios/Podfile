@@ -33,6 +33,11 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # MediaPipe Tasks para el cuello de los collares (NeckTrackingHandler.swift).
+  # En CocoaPods no está la 0.10.29 que usa Android; 0.10.21 tiene las mismas
+  # tareas (FaceLandmarker, ImageSegmenter) y es la más usada.
+  pod 'MediaPipeTasksVision', '0.10.21'
   target 'RunnerTests' do
     inherit! :search_paths
   end
