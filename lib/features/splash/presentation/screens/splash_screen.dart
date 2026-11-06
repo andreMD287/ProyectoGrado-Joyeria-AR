@@ -9,7 +9,6 @@ class SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screen = MediaQuery.sizeOf(context);
     return Scaffold(
       backgroundColor: JoyeriaPalette.background,
       body: SafeArea(
@@ -28,7 +27,7 @@ class SplashScreen extends StatelessWidget {
                 children: [
                   const SizedBox(height: 24),
                   const Text(
-                    'COLECCIÓN ROCÍO  ·  JOYERÍA AR',
+                    'ELEGANCIA EN CADA DETALLE',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 10,
@@ -37,7 +36,7 @@ class SplashScreen extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const Spacer(flex: 4),
+                  const Spacer(flex: 3),
                   const Icon(
                     Icons.diamond_outlined,
                     size: 68,
@@ -47,7 +46,7 @@ class SplashScreen extends StatelessWidget {
                   const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      'Joyería AR',
+                      'Jewelry AR',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 48,
@@ -73,7 +72,7 @@ class SplashScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 28),
                   const Text(
-                    'Descubre tus joyas favoritas y\npruébatelas en realidad aumentada.',
+                    'Descubre tus joyas favoritas y\npruébatelas con realidad aumentada.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       height: 1.7,
@@ -81,22 +80,13 @@ class SplashScreen extends StatelessWidget {
                       color: JoyeriaPalette.muted,
                     ),
                   ),
-                  const Spacer(flex: 3),
+                  const Spacer(flex: 2),
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _CategoryPreview(
-                        icon: Icons.favorite_border,
-                        label: 'Collares',
-                      ),
-                      _CategoryPreview(
-                        icon: Icons.diamond_outlined,
-                        label: 'Aretes',
-                      ),
-                      _CategoryPreview(
-                        icon: Icons.watch_outlined,
-                        label: 'Pulseras',
-                      ),
+                      _CategoryPreview(label: 'Collares'),
+                      _CategoryPreview(label: 'Aretes'),
+                      _CategoryPreview(label: 'Pulseras'),
                     ],
                   ),
                   const Spacer(flex: 2),
@@ -112,12 +102,6 @@ class SplashScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: screen.height < 650 ? 8 : 20),
-                  const Text(
-                    'Explora sin crear una cuenta',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: JoyeriaPalette.muted, fontSize: 11),
                   ),
                 ],
               ),
@@ -137,9 +121,8 @@ class _LineDecoration extends StatelessWidget {
 }
 
 class _CategoryPreview extends StatelessWidget {
-  final IconData icon;
   final String label;
-  const _CategoryPreview({required this.icon, required this.label});
+  const _CategoryPreview({required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +136,12 @@ class _CategoryPreview extends StatelessWidget {
             color: JoyeriaPalette.surface,
             border: Border.all(color: JoyeriaPalette.stroke),
           ),
-          child: Icon(icon, color: JoyeriaPalette.rose, size: 20),
+          child: Center(
+            child: CustomPaint(
+              size: const Size(25, 25),
+              painter: _JewelryIconPainter(label),
+            ),
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -163,6 +151,54 @@ class _CategoryPreview extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Iconos lineales para las tres categorias reales de joyas.
+class _JewelryIconPainter extends CustomPainter {
+  final String category;
+  const _JewelryIconPainter(this.category);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 28, size.height / 28);
+    final line = Paint()
+      ..color = JoyeriaPalette.rose
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    if (category == 'Collares') {
+      final chain = Path()
+        ..moveTo(4, 5)
+        ..cubicTo(4, 15, 8, 21, 14, 21)
+        ..cubicTo(20, 21, 24, 15, 24, 5);
+      canvas.drawPath(chain, line);
+      canvas.drawLine(const Offset(14, 21), const Offset(14, 23), line);
+      canvas.drawCircle(const Offset(14, 25), 2, line);
+    } else if (category == 'Aretes') {
+      for (final x in [8.0, 20.0]) {
+        canvas.drawCircle(Offset(x, 5), 1.8, line);
+        canvas.drawLine(Offset(x, 7), Offset(x, 12), line);
+        final drop = Path()
+          ..moveTo(x, 12)
+          ..cubicTo(x - 7, 20, x - 3, 25, x, 25)
+          ..cubicTo(x + 3, 25, x + 7, 20, x, 12);
+        canvas.drawPath(drop, line);
+      }
+    } else if (category == 'Pulseras') {
+      canvas.drawOval(const Rect.fromLTWH(3, 7, 22, 14), line);
+      canvas.drawCircle(const Offset(14, 21), 3, line);
+      canvas.drawLine(const Offset(4, 12), const Offset(7, 12), line);
+      canvas.drawLine(const Offset(21, 12), const Offset(24, 12), line);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _JewelryIconPainter oldDelegate) =>
+      category != oldDelegate.category;
 }
 
 /// Ramita decorativa dibujada en Flutter: no exige imágenes externas.
