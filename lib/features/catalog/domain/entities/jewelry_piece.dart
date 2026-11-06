@@ -35,6 +35,11 @@ class JewelryPiece {
   /// `catalog.json` / D3.
   final double orientacionYawDeg;
 
+  /// Corrección de cabeceo (grados) para modelos exportados mirando hacia
+  /// arriba/abajo en vez de al frente. 0 = sin corrección. Ver
+  /// `orientacion_pitch_deg` en `catalog.json` / D3.
+  final double orientacionPitchDeg;
+
   const JewelryPiece({
     required this.id,
     required this.nombre,
@@ -45,5 +50,6 @@ class JewelryPiece {
     this.material,
     this.descripcion,
     this.orientacionYawDeg = 0,
+    this.orientacionPitchDeg = 0,
   });
 }

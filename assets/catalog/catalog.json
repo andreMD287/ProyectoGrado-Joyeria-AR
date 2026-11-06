@@ -46,6 +46,22 @@
       "orientacion_yaw_deg": 180
     },
     {
+      "id": "arete-juanes-01",
+      "nombre": "Arete de plata lisa",
+      "categoria": "arete",
+      "tipo_anclaje": "lobulo",
+      "landmark_anclaje": null,
+      "modelo_glb": "assets/models/Aretes_Juanes.glb",
+      "foto": "assets/catalog/fotos/arete-juanes-01.jpg",
+      "dimensiones_mm": { "alto": 20, "ancho": 8, "profundidad": 6 },
+      "material": "plata 925",
+      "descripcion": "Arete colgante liso.",
+      "estado": "pendiente",
+      "notas_material": "Dimensiones estimadas, pendientes de medir sobre el modelo real.",
+      "orientacion_yaw_deg": 180,
+      "orientacion_pitch_deg": 90
+    },
+    {
       "id": "collar-cadena-01",
       "nombre": "Collar cadena fina con dije I",
       "categoria": "collar",
