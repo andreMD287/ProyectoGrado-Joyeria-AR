@@ -11,23 +11,19 @@ import '../../../catalog/presentation/controllers/catalog_controller.dart';
 class JewelryDetailScreen extends ConsumerStatefulWidget {
   final String pieceId;
 
-  const JewelryDetailScreen({
-    super.key,
-    required this.pieceId,
-  });
+  const JewelryDetailScreen({super.key, required this.pieceId});
 
   @override
   ConsumerState<JewelryDetailScreen> createState() =>
       _JewelryDetailScreenState();
 }
 
-class _JewelryDetailScreenState
-    extends ConsumerState<JewelryDetailScreen> {
+class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
   int _viewerVersion = 0;
 
-  static const _background = Color(0xFFFBF7F2);
-  static const _espresso = Color(0xFF3A2419);
-  static const _gold = Color(0xFFB4895B);
+  static const _background = Color(0xFFF8F0EE);
+  static const _espresso = Color(0xFF432B31);
+  static const _gold = Color(0xFFA35F70);
 
   JewelryPiece? _findPiece(List<JewelryPiece> pieces) {
     for (final piece in pieces) {
@@ -47,10 +43,7 @@ class _JewelryDetailScreenState
       backgroundColor: _background,
       body: catalog.when(
         loading: () => const Center(
-          child: CircularProgressIndicator(
-            color: _gold,
-            strokeWidth: 2,
-          ),
+          child: CircularProgressIndicator(color: _gold, strokeWidth: 2),
         ),
         error: (error, _) => Center(
           child: Text(
@@ -62,9 +55,7 @@ class _JewelryDetailScreenState
           final piece = _findPiece(pieces);
 
           if (piece == null) {
-            return const Center(
-              child: Text('No encontramos esta joya.'),
-            );
+            return const Center(child: Text('No encontramos esta joya.'));
           }
 
           return _buildContent(piece);
@@ -79,9 +70,7 @@ class _JewelryDetailScreenState
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          SliverToBoxAdapter(
-            child: _buildHeader(piece),
-          ),
+          SliverToBoxAdapter(child: _buildHeader(piece)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
@@ -142,10 +131,10 @@ class _JewelryDetailScreenState
 
   Widget _buildViewer(JewelryPiece piece) {
     return Container(
-      height: 430,
+      height: 355,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
-        color: const Color(0xFFF2E4D5),
+        color: const Color(0xFFF0DEDA),
         boxShadow: [
           BoxShadow(
             color: _espresso.withValues(alpha: 0.07),
@@ -163,28 +152,16 @@ class _JewelryDetailScreenState
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFFF8EEE3),
-                    Color(0xFFECD9C4),
-                  ],
+                  colors: [Color(0xFFF8EEEE), Color(0xFFE9D3D1)],
                 ),
               ),
             ),
           ),
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                6,
-                52,
-                6,
-                45,
-              ),
+              padding: const EdgeInsets.fromLTRB(6, 52, 6, 45),
               child: ref
-                  .watch(
-                    resolvedModelAssetProvider(
-                      piece.modeloGlb,
-                    ),
-                  )
+                  .watch(resolvedModelAssetProvider(piece.modeloGlb))
                   .when(
                     loading: () => const Center(
                       child: CircularProgressIndicator(
@@ -199,9 +176,7 @@ class _JewelryDetailScreenState
                       ),
                     ),
                     data: (src) => ModelViewer(
-                      key: ValueKey(
-                        '$_viewerVersion-$src',
-                      ),
+                      key: ValueKey('$_viewerVersion-$src'),
                       src: src,
                       alt: piece.nombre,
                       orientation: piece.orientacionYawDeg == 0
@@ -220,10 +195,7 @@ class _JewelryDetailScreenState
             left: 18,
             top: 18,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 9,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
               decoration: BoxDecoration(
                 color: const Color(0xFFD4AE68),
                 borderRadius: BorderRadius.circular(18),
@@ -255,9 +227,7 @@ class _JewelryDetailScreenState
                 _ViewerButton(
                   icon: Icons.open_in_full_rounded,
                   onTap: () {
-                    context.push(
-                      '/piece/${piece.id}/3d',
-                    );
+                    context.push('/piece/${piece.id}/3d');
                   },
                 ),
               ],
@@ -278,10 +248,7 @@ class _JewelryDetailScreenState
                 const SizedBox(width: 7),
                 const Text(
                   'Arrastra para girar',
-                  style: TextStyle(
-                    color: Color(0xFF8D7766),
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Color(0xFF8D7766), fontSize: 12),
                 ),
                 Container(
                   width: 1,
@@ -297,10 +264,7 @@ class _JewelryDetailScreenState
                 const SizedBox(width: 7),
                 const Text(
                   'Pellizca para acercar',
-                  style: TextStyle(
-                    color: Color(0xFF8D7766),
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Color(0xFF8D7766), fontSize: 12),
                 ),
               ],
             ),
@@ -376,82 +340,32 @@ class _JewelryDetailScreenState
   }
 
   Widget _buildActions(JewelryPiece piece) {
-    return Column(
+    return Row(
       children: [
-        SizedBox(
-          width: double.infinity,
-          height: 64,
-          child: FilledButton(
-            onPressed: () {
-              // NUEVO FLUJO:
-              // Detalle → Preparación → Cámara AR
-              context.push(
-                '/try-on/${piece.id}/prepare',
-              );
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF171512),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.photo_camera_outlined,
-                  size: 25,
-                ),
-                SizedBox(width: 13),
-                Text(
-                  'Probar virtualmente',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => context.push('/piece/${piece.id}/3d'),
+            icon: const Icon(Icons.view_in_ar_outlined, size: 18),
+            label: const Text('Ver en 3D', style: TextStyle(fontSize: 12)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _gold,
+              side: const BorderSide(color: _gold),
+              padding: const EdgeInsets.symmetric(vertical: 17),
+              shape: const StadiumBorder(),
             ),
           ),
         ),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          height: 64,
-          child: OutlinedButton(
-            onPressed: () {
-              context.push(
-                '/piece/${piece.id}/3d',
-              );
-            },
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _gold,
-              side: const BorderSide(
-                color: _gold,
-                width: 1.4,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.view_in_ar_outlined,
-                  size: 27,
-                ),
-                SizedBox(width: 13),
-                Text(
-                  'Ver en 3D',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+        const SizedBox(width: 10),
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: () => context.push('/try-on/${piece.id}/prepare'),
+            icon: const Icon(Icons.center_focus_strong, size: 18),
+            label: const Text('Probar con AR', style: TextStyle(fontSize: 12)),
+            style: FilledButton.styleFrom(
+              backgroundColor: _gold,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 17),
+              shape: const StadiumBorder(),
             ),
           ),
         ),
@@ -501,10 +415,7 @@ class _ViewerButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _ViewerButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _ViewerButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -517,11 +428,7 @@ class _ViewerButton extends StatelessWidget {
         child: SizedBox(
           width: 52,
           height: 52,
-          child: Icon(
-            icon,
-            color: const Color(0xFF9D7747),
-            size: 27,
-          ),
+          child: Icon(icon, color: const Color(0xFF9D7747), size: 27),
         ),
       ),
     );
@@ -543,27 +450,18 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 94,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 11,
-        vertical: 12,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF8),
+        color: const Color(0xFFFFFAF9),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFFE7D7C3),
-        ),
+        border: Border.all(color: const Color(0xFFECDAD7)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: const Color(0xFFB4895B),
-              ),
+              Icon(icon, size: 18, color: const Color(0xFFA35F70)),
               const SizedBox(width: 5),
               Flexible(
                 child: Text(
@@ -595,4 +493,3 @@ class _InfoCard extends StatelessWidget {
     );
   }
 }
-
