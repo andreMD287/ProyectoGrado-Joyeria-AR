@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import '../../features/tracking/data/datasources/android_hand_detector.dart';
 import '../../features/tracking/data/datasources/face_detector_datasource.dart';
 import '../../features/tracking/data/datasources/ios_hand_detector.dart';
+import '../../features/tracking/data/datasources/ios_neck_face_datasource.dart';
 import '../../features/tracking/data/datasources/landmark_detector.dart';
 import '../../features/tracking/data/datasources/neck_detector_datasource.dart';
 import '../../features/tracking/data/datasources/pose_detector_datasource.dart';
@@ -55,8 +56,15 @@ ImageFormatGroup imageFormatGroupFor(DetectorKind kind) => switch (kind) {
 /// `FaceLandmarker`, por un conflicto entre MediaPipe y ANGLE/`three_js` que
 /// no depende de este código (ver `docs/IOS_SEGUIMIENTO_CUELLO.md`, sección
 /// "Resultado de la primera prueba en iPhone"). Mientras esté en `false`, los
-/// collares en iOS siguen con los hombros de ML Kit Pose.
+/// collares en iOS usan [iosNecklaceFaceEnabled].
 const bool iosNeckTrackerEnabled = false;
+
+/// Collares en iOS con la cara de ML Kit Face (`IosNeckFaceDataSource`), en
+/// lugar de MediaPipe o de ML Kit Pose, que chocan con ANGLE. **Sin probar en
+/// un iPhone.** Si al abrir un collar la app se cae, ponerlo en `false`: los
+/// collares en iOS vuelven a mostrar el aviso de "no disponible" en vez de
+/// abrir la cámara.
+const bool iosNecklaceFaceEnabled = true;
 
 /// Crea el detector que corresponde al tipo y a la plataforma.
 LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
@@ -66,7 +74,9 @@ LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
       DetectorKind.pose => PoseDetectorDataSource(),
       DetectorKind.neck => Platform.isAndroid || iosNeckTrackerEnabled
           ? NeckDetectorDataSource()
-          : PoseDetectorDataSource(),
+          : iosNecklaceFaceEnabled
+              ? IosNeckFaceDataSource()
+              : PoseDetectorDataSource(),
     };
 
 /// `true` si el detector de [kind] tiene que correr en el isolate raíz.

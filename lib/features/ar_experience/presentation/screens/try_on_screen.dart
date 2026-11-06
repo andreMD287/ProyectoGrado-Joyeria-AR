@@ -9,6 +9,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/assets/resolved_model_asset.dart';
 import '../../../../core/di/providers.dart';
+import '../../../../core/isolate/detection_runner.dart'
+    show iosNecklaceFaceEnabled;
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
@@ -117,8 +119,13 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
   /// a iOS con un lector BGRA, o reemplazar el detector de respaldo por algo
   /// que no traiga MediaPipe adentro), se bloquea aquí antes de arrancar la
   /// cámara: mejor un mensaje claro que tumbar toda la sesión del usuario.
+  ///
+  /// Con [iosNecklaceFaceEnabled] los collares en iOS usan ML Kit Face, que
+  /// no trae ese problema, y no se bloquean.
   bool get _necklaceBlockedOnIOS =>
-      Platform.isIOS && piece.categoria == JewelryCategory.necklace;
+      Platform.isIOS &&
+      piece.categoria == JewelryCategory.necklace &&
+      !iosNecklaceFaceEnabled;
 
   @override
   void initState() {

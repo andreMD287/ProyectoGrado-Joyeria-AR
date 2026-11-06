@@ -105,6 +105,36 @@ suprimir la extensión `QCOM_tiled_rendering` desde configuración de ANGLE
 (sin confirmar si `flutter_angle` lo expone), o esperar una versión de
 MediaPipe que corrija esto.
 
+## Camino actual: cara con ML Kit Face (fase 1, 2026-11-06)
+
+Como MediaPipe y ML Kit Pose chocan con ANGLE, los collares en iOS usan ahora
+ML Kit Face, el mismo detector de los aretes, con el contorno de la cara
+activado (`lib/.../ios_neck_face_datasource.dart`). Entrega lo mismo que el
+camino de Android (mentón, mejillas, nariz, ancho de cara y giro de cabeza),
+así que la estrategia del collar no cambia. **Todavía sin la forma del
+cuello:** el collar se cuelga con una base supuesta a partir de la cara. La
+fase 2 agregaría la segmentación con el mismo modelo de Android, sin
+MediaPipe.
+
+Se controla con `iosNecklaceFaceEnabled` en `detection_runner.dart`
+(encendido). MediaPipe sigue apagado (`iosNeckTrackerEnabled = false`).
+
+**Qué verificar en el iPhone:**
+
+1. **Que no se caiga al abrir un collar.** Hoy los aretes usan ML Kit Face
+   sin el contorno; con el contorno activado aún no se ha probado. Si se cae,
+   poner `iosNecklaceFaceEnabled = false` (vuelve el aviso de "no
+   disponible") y guardar la pila de lldb.
+2. **Los puntos de la cara.** Con la diana de depuración deben verse cuatro
+   puntos sobre la cara: mentón, las dos mejillas (bordes de la cara) y la
+   punta de la nariz.
+3. **El collar de frente.** Debe quedar centrado bajo el mentón, rodeando el
+   cuello.
+4. **El giro.** Al girar la cabeza a un lado, el collar debe girar hacia el
+   mismo lado. Si gira al contrario, avisar (el signo sale de la nariz).
+5. **El tamaño al girar.** Si el collar se agranda al girar la cabeza, bajar
+   `faceWidthYawExponent`; si se encoge, subirlo.
+
 ## Referencia: cómo quedó en Android
 
 Validado en un Samsung Galaxy A15 (2026-11-05). De frente, cerca y lejos, el

@@ -37,7 +37,7 @@ class FaceDetectorDataSource implements LandmarkDetector {
     CameraImage frame,
     int sensorOrientation,
   ) async {
-    final input = _toInputImage(frame, sensorOrientation);
+    final input = mlKitInputImage(frame, sensorOrientation);
     if (input == null) return LandmarkFrame.empty;
 
     final faces = await _detector.processImage(input);
@@ -104,23 +104,25 @@ class FaceDetectorDataSource implements LandmarkDetector {
       rightBBoxLobe, // 7
     ];
   }
+}
 
-  InputImage? _toInputImage(CameraImage image, int sensorOrientation) {
-    final rotation = InputImageRotationValue.fromRawValue(sensorOrientation) ??
-        InputImageRotation.rotation0deg;
-    final format = InputImageFormatValue.fromRawValue(image.format.raw);
-    if (format == null) return null;
-    if (image.planes.length != 1) return null;
-    final plane = image.planes.first;
+/// Frame de cámara de un solo plano (`nv21` en Android, `bgra8888` en iOS)
+/// como entrada de ML Kit. Lo comparten los detectores basados en ML Kit Face.
+InputImage? mlKitInputImage(CameraImage image, int sensorOrientation) {
+  final rotation = InputImageRotationValue.fromRawValue(sensorOrientation) ??
+      InputImageRotation.rotation0deg;
+  final format = InputImageFormatValue.fromRawValue(image.format.raw);
+  if (format == null) return null;
+  if (image.planes.length != 1) return null;
+  final plane = image.planes.first;
 
-    return InputImage.fromBytes(
-      bytes: plane.bytes,
-      metadata: InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: rotation,
-        format: format,
-        bytesPerRow: plane.bytesPerRow,
-      ),
-    );
-  }
+  return InputImage.fromBytes(
+    bytes: plane.bytes,
+    metadata: InputImageMetadata(
+      size: Size(image.width.toDouble(), image.height.toDouble()),
+      rotation: rotation,
+      format: format,
+      bytesPerRow: plane.bytesPerRow,
+    ),
+  );
 }
