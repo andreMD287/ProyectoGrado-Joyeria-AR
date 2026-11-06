@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
@@ -96,9 +97,34 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
 
   JewelryPiece get piece => widget.piece;
 
+  /// Collares en iOS usan `google_mlkit_pose_detection` (hombros) de
+  /// respaldo, porque el seguimiento de cuello por MediaPipe (ver
+  /// `docs/IOS_SEGUIMIENTO_CUELLO.md`) no arranca ahí. Ese detector de pose
+  /// en iOS crashea la app entera al abrir la cámara: trae adentro su propia
+  /// copia privada de MediaPipe (clases `MLKXeno*`/`MLKITxc_Drishti*`, vistas
+  /// en el backtrace de lldb), que intenta crear su propio contexto de
+  /// OpenGL ES y choca con el de ANGLE/`flutter_angle` (el mismo motor que
+  /// usa `JewelryScene` para dibujar la joya): `EXC_BAD_ACCESS` en
+  /// `glStartTilingQCOM`, una extensión de GPUs Qualcomm que ANGLE anuncia
+  /// en iOS aunque no provee los punteros de función reales — el mismo bug
+  /// de clase que Skia documentó y corrigió comprobando los punteros antes
+  /// de usarlos. No es arreglable desde este código: las dos librerías son
+  /// binarios precompilados de Google sin ningún punto de configuración
+  /// para evitarlo (revisado el puente nativo de
+  /// `google_mlkit_pose_detection` y la capa EGL de `flutter_angle`).
+  ///
+  /// Mientras no haya una alternativa viable (portar la sonda del antebrazo
+  /// a iOS con un lector BGRA, o reemplazar el detector de respaldo por algo
+  /// que no traiga MediaPipe adentro), se bloquea aquí antes de arrancar la
+  /// cámara: mejor un mensaje claro que tumbar toda la sesión del usuario.
+  bool get _necklaceBlockedOnIOS =>
+      Platform.isIOS && piece.categoria == JewelryCategory.necklace;
+
   @override
   void initState() {
     super.initState();
+
+    if (_necklaceBlockedOnIOS) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startExperience();
@@ -349,51 +375,94 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
+      child: _necklaceBlockedOnIOS
+          ? _buildNecklaceUnavailableOnIOS()
+          : Stack(
+              children: [
+                Positioned.fill(
+                  child: active
+                      ? _CameraOverlay(
+                          piece: piece,
+                          anchor: anchor,
+                          landmarks: landmarks,
+                          fps: fps,
+                          showDebug: _debugOverlay,
+                          magnify: _magnifierOn,
+                        )
+                      : const _CameraLoadingView(),
+                ),
+
+                Positioned(
+                  right: 12,
+                  top: 12,
+                  child: _ToggleButton(
+                    enabled: _debugOverlay,
+                    icon: Icons.my_location_rounded,
+                    onPressed: () => setState(
+                      () => _debugOverlay = !_debugOverlay,
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  right: 12,
+                  top: 58,
+                  child: _ToggleButton(
+                    enabled: _magnifierOn,
+                    icon: Icons.search_rounded,
+                    onPressed: () => setState(
+                      () => _magnifierOn = !_magnifierOn,
+                    ),
+                  ),
+                ),
+
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 24,
+                  child: Center(
+                    child: _ViewModeSelector(),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  /// Mensaje en vez de cámara cuando [_necklaceBlockedOnIOS]. Ver el
+  /// comentario de esa propiedad para la causa completa.
+  Widget _buildNecklaceUnavailableOnIOS() {
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Positioned.fill(
-            child: active
-                ? _CameraOverlay(
-                    piece: piece,
-                    anchor: anchor,
-                    landmarks: landmarks,
-                    fps: fps,
-                    showDebug: _debugOverlay,
-                    magnify: _magnifierOn,
-                  )
-                : const _CameraLoadingView(),
+          const Icon(
+            Icons.phone_iphone_rounded,
+            size: 40,
+            color: _muted,
           ),
-
-          Positioned(
-            right: 12,
-            top: 12,
-            child: _ToggleButton(
-              enabled: _debugOverlay,
-              icon: Icons.my_location_rounded,
-              onPressed: () => setState(
-                () => _debugOverlay = !_debugOverlay,
-              ),
+          const SizedBox(height: 16),
+          const Text(
+            'Prueba de collares no disponible en iOS por ahora',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _espresso,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
             ),
           ),
-
-          Positioned(
-            right: 12,
-            top: 58,
-            child: _ToggleButton(
-              enabled: _magnifierOn,
-              icon: Icons.search_rounded,
-              onPressed: () => setState(
-                () => _magnifierOn = !_magnifierOn,
-              ),
-            ),
-          ),
-
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 24,
-            child: Center(
-              child: _ViewModeSelector(),
+          const SizedBox(height: 10),
+          const Text(
+            'Un conflicto entre dos librerías de detección en iOS hace que '
+            'esta categoría se cierre sola al abrir la cámara. Mientras se '
+            'resuelve, collares está disponible en Android; aretes y '
+            'pulseras siguen funcionando normal aquí.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _muted,
+              fontSize: 13.5,
+              height: 1.5,
             ),
           ),
         ],
