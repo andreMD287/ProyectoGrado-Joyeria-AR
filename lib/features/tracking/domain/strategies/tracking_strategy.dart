@@ -3,7 +3,11 @@ import '../entities/anchor_pose.dart';
 import '../entities/landmark_frame.dart';
 
 /// Tipo de detector que requiere una estrategia.
-enum DetectorKind { hand, face, pose }
+/// Detector que necesita cada estrategia.
+///
+/// `neck` es cara y cuello medidos con MediaPipe (`NeckTracker`) en Android;
+/// en iOS se resuelve con ML Kit Pose, como antes de existir.
+enum DetectorKind { hand, face, pose, neck }
 
 /// Estrategia de anclaje por categoría (patrón Strategy). Cada categoría sabe
 /// qué detector necesita y cómo transformar los landmarks crudos en el punto

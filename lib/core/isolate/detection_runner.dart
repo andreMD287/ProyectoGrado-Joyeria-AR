@@ -6,6 +6,7 @@ import '../../features/tracking/data/datasources/android_hand_detector.dart';
 import '../../features/tracking/data/datasources/face_detector_datasource.dart';
 import '../../features/tracking/data/datasources/ios_hand_detector.dart';
 import '../../features/tracking/data/datasources/landmark_detector.dart';
+import '../../features/tracking/data/datasources/neck_detector_datasource.dart';
 import '../../features/tracking/data/datasources/pose_detector_datasource.dart';
 import '../../features/tracking/domain/entities/landmark_frame.dart';
 import '../../features/tracking/domain/strategies/tracking_strategy.dart'
@@ -42,7 +43,8 @@ ImageFormatGroup imageFormatGroupFor(DetectorKind kind) => switch (kind) {
       DetectorKind.hand =>
         Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
       DetectorKind.face ||
-      DetectorKind.pose =>
+      DetectorKind.pose ||
+      DetectorKind.neck =>
         Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
     };
 
@@ -52,6 +54,8 @@ LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
         Platform.isIOS ? IosHandDetector() : AndroidHandDetector(),
       DetectorKind.face => FaceDetectorDataSource(),
       DetectorKind.pose => PoseDetectorDataSource(),
+      DetectorKind.neck =>
+        Platform.isAndroid ? NeckDetectorDataSource() : PoseDetectorDataSource(),
     };
 
 /// `true` si el detector de [kind] tiene que correr en el isolate raíz.

@@ -6,6 +6,7 @@ import 'package:three_js/three_js.dart' as three;
 import 'package:three_js_advanced_loaders/rgbe_loader.dart' show RGBELoader;
 
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/necklace_geometry.dart';
 import '../../../../core/math/ring_geometry.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 
@@ -58,6 +59,19 @@ class JewelryScene extends StatefulWidget {
   /// desaparecen donde no deben.
   final bool showOccluder;
 
+  /// La pieza es un collar: se ajusta por el hueco del cuello en vez de por
+  /// un aro, y se ocluye con un proxy de cuello (ver `_setupNecklace`).
+  final bool necklace;
+
+  /// Ancho de la columna del cuello en píxeles del área, para collares. Es lo
+  /// que reproduce el proxy de cuello.
+  final double? neckDiameterPx;
+
+  /// Ancho de la base del cuello en píxeles del área, donde apoya la cadena:
+  /// el hueco del collar se ajusta a ella. `null` si no se midió; entonces se
+  /// deduce de [neckDiameterPx].
+  final double? neckBasePx;
+
   const JewelryScene({
     super.key,
     required this.modelBytes,
@@ -68,6 +82,9 @@ class JewelryScene extends StatefulWidget {
     this.staticYawDeg = 0,
     this.rollOffset = 0,
     this.showOccluder = false,
+    this.necklace = false,
+    this.neckDiameterPx,
+    this.neckBasePx,
   });
 
   @override
@@ -162,6 +179,95 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// tercero, y ese tercero es por donde entra el brazo. Deducirlo de la malla
   /// evita una constante por modelo y funciona con piezas que aún no existen.
   three.Vector3 _ringAxisLocal = three.Vector3(0, 0, 1);
+
+  /// Hueco del cuello del collar, medido sobre los vértices ya girados con
+  /// `orientacion_yaw_deg`. `null` si la pieza no es un collar.
+  NecklaceMeasure? _collar;
+
+  /// Alambre de diagnóstico del proxy de cuello del collar.
+  three.Object3D? _necklaceWire;
+
+  /// Proxy de cuello del collar; se ajusta en cada pose a la columna medida.
+  three.Object3D? _necklaceNeck;
+
+  /// Holgura del hueco del collar sobre la **base** del cuello medida. La base
+  /// es justo donde la cadena sale de detrás del cuello, así que el hueco
+  /// apenas la supera.
+  static const double _holguraSobreBase = 1.05;
+
+  /// Radio del proxy de cuello respecto al del hueco del collar, cuando la
+  /// base del cuello está medida.
+  ///
+  /// Con la columna medida (~0,87 de la base) el proxy quedaba más angosto
+  /// que el aro, y el tramo que va de los costados hacia la nuca —que en los
+  /// modelos sube— asomaba a los lados del cuello como dos cuernos hasta la
+  /// mandíbula, sobre todo de cerca (visto en dispositivo, 2026-11-05). Con
+  /// 0,94 la cadena se escondía demasiado pronto a los costados; 0,88 queda
+  /// entre las dos y fue lo que se prefirió en dispositivo.
+  ///
+  /// Con el eje del cuello corrido hacia la nuca, un radio así cumple las dos
+  /// cosas: de frente tapa la cadena desde unos 20° más allá del costado, y
+  /// girado deja ver la del lado de la cámara hasta unos 50° más allá, porque
+  /// ese tramo queda por fuera del proxy y no dentro.
+  static const double _proxySobreHueco = 0.88;
+
+  /// Holgura del hueco del collar sobre el cuello. El proxy de cuello mide el
+  /// hueco dividido por esto.
+  ///
+  /// El proxy es la **columna** del cuello, más delgada que la base sobre la
+  /// que apoya la cadena (que se abre hacia los trapecios). Con 1,05 la cadena
+  /// desaparecía justo al tocar el borde del cuello y se veían dos cortes
+  /// verticales; con la columna más delgada, la cadena sube por los costados
+  /// curvándose hacia la nuca antes de esconderse, que es lo que se ve como
+  /// rodear el cuello (simulado y visto en dispositivo, 2026-10-29). Con 1,25
+  /// y el ancla aún mal centrada, girado se salía hacia el hombro.
+  static const double _holguraDelCollar = 1.2;
+
+  /// Dónde va la columna del cuello entre el centro del aro (0) y su borde
+  /// trasero (1). La cadena cuelga apoyada en la nuca y lo que sobra cae hacia
+  /// adelante, así que el cuello no está en el centro del aro; pero tampoco
+  /// pegado del todo a la cadena, que por detrás descansa sobre la base.
+  static const double _cuelloHaciaNuca = 0.5;
+
+  /// Inclinación del collar hacia adelante: la nuca queda más alta que el
+  /// frente, como cae una cadena real sobre la pendiente de los trapecios.
+  /// Los modelos vienen con la vuelta trasera horizontal; sin inclinarla, al
+  /// girar la cadena del lado de la cámara llega al borde del cuello y se
+  /// corta en vez de subir por el costado hacia la nuca. Solo se inclina la
+  /// pieza: el cuello sigue vertical.
+  ///
+  /// **Poca a propósito.** La inclinación gira la pieza entera, y además de
+  /// subir la nuca mueve la caída del frente hacia atrás: con 35° la punta
+  /// quedaba debajo del cuello en vez de sobre el pecho, el collar era un aro
+  /// casi vertical en el plano de la cámara y se veía siempre de frente a ella
+  /// aunque la persona girara (visto en dispositivo y simulado, 2026-10-29).
+  /// La cámara frontal ya mira el cuello algo desde arriba, lo que aporta el
+  /// resto del efecto.
+  static const double _necklaceTiltDeg = 10;
+
+  /// Qué fracción de la inclinación de los hombros sigue el collar.
+  ///
+  /// Un collar **cuelga por gravedad**: si los hombros quedan algo desnivelados
+  /// la caída sigue apuntando hacia abajo. Girándolo con toda la línea de
+  /// hombros —que además tiembla ±3° con ML Kit— la V quedaba torcida respecto
+  /// al eje mentón-garganta: medido de frente, 11 px de desvío entre el centro
+  /// de la cadena y la punta (2026-10-29). Una fracción lo deja acompañar una
+  /// inclinación real del cuerpo sin torcerse con el ruido.
+  static const double _necklaceRollFollow = 0.3;
+
+  /// Giro del torso por debajo del cual el collar se queda de frente.
+  ///
+  /// La zona muerta es **suave**: entre una y dos veces este valor el giro
+  /// crece del 0 al valor medido, y por encima pasa entero. Restarla siempre
+  /// le quitaba esos grados a los giros grandes, y girado el collar seguía
+  /// mirando a la cámara. De frente la estimación queda en unos ±10°
+  /// estables según la prenda (medido en dispositivo, 2026-11-05).
+  static const double _necklaceYawDeadZoneDeg = 10;
+
+  /// Alto del proxy de cuello, en anchos del hueco: debe llegar hasta la
+  /// barbilla para tapar la vuelta trasera en cualquier inclinación.
+  static const double _neckOccluderHeight = 1.5;
+
 
   void _createViewer(Size area) {
     _area = area;
@@ -272,6 +378,14 @@ class _JewelrySceneState extends State<JewelryScene> {
     // 15 px del eje del brazo (medido en dispositivo, 2026-10-13).
     final puntos = _vertices(model);
     if (puntos.isEmpty) return;
+
+    if (widget.necklace) {
+      _limitarMetalicidad(model, hasEnvironment: hasEnvironment);
+      _setupNecklace(viewer, model, puntos);
+      _applyAnchor();
+      return;
+    }
+
     final (min, max) = _limites(puntos);
     final size = three.Vector3(max.x - min.x, max.y - min.y, max.z - min.z);
     final center = three.Vector3(
@@ -303,6 +417,176 @@ class _JewelrySceneState extends State<JewelryScene> {
     _jewel = holder;
 
     _applyAnchor();
+  }
+
+  /// Monta un collar: lo orienta, lo sitúa sobre el cuello y le pone el proxy
+  /// de oclusión.
+  ///
+  /// Los collares del catálogo vienen modelados **puestos**: la mitad trasera
+  /// rodea el cuello casi horizontal y la delantera cae sobre el pecho. Lo que
+  /// se mide es ese hueco (ver `necklace_geometry.dart`), y todo se cuelga de
+  /// él: la escala hace que el hueco abrace el cuello y el proxy se define en
+  /// sus mismas unidades, así que la oclusión calza con la cadena por
+  /// construcción, sin constantes por modelo.
+  ///
+  /// **El cuello va pegado a la nuca, no en el centro del aro.** Una cadena
+  /// cuelga apoyada en la parte de atrás del cuello y lo que le sobra cae hacia
+  /// adelante. Con el cuello en el centro, al girar el torso la cadena se
+  /// escondía a mitad del costado del cuello —a un cuarto de vuelta— en vez de
+  /// recorrerlo hasta cerca de la nuca, y el collar no parecía rodearlo. Antes
+  /// había además un proxy de torso; cortaba la cadena en el aire sobre el
+  /// pecho y con el cuello en su sitio ya no hace falta (visto en dispositivo,
+  /// 2026-10-29).
+  void _setupNecklace(
+    three.ThreeJS viewer,
+    three.Object3D model,
+    List<Vec3> puntos,
+  ) {
+    // El giro del catálogo se aplica antes de medir: la medida supone la caída
+    // hacia +z, que es hacia la cámara.
+    final yaw = widget.staticYawDeg * math.pi / 180;
+    final c = math.cos(yaw), s = math.sin(yaw);
+    final girados = [
+      for (final p in puntos) Vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z),
+    ];
+    final collar = measureNecklace(girados);
+    if (collar == null) return;
+    // El proxy de las pulseras no aplica: se deja apagado.
+    _occluder?.visible = false;
+    _collar = collar;
+    _modelDiameter = collar.holeWidth;
+    assert(
+      collar.facesFront,
+      'El collar cae hacia atrás: revisar orientacion_yaw_deg del catálogo.',
+    );
+
+    final girado = three.Object3D()
+      ..rotation.y = yaw
+      ..add(model);
+    // El origen de la pieza es el eje del cuello, corrido desde el centro del
+    // hueco hacia la nuca (ver [_cuelloHaciaNuca]).
+    final ancho = collar.holeWidth;
+    final radioCuello = ancho / _holguraDelCollar / 2;
+    final centro = collar.neckCenter;
+    final ejeZ = centro.z - (ancho / 2 - radioCuello) * _cuelloHaciaNuca;
+    final centrado = three.Object3D()
+      ..position.setValues(-centro.x, -centro.y, -ejeZ)
+      ..add(girado);
+    final tilt = _necklaceTiltDeg * math.pi / 180;
+    final inclinado = three.Object3D()
+      ..rotation.x = tilt
+      ..add(centrado);
+
+    final holder = three.Object3D()..add(inclinado);
+
+    // Proxy de cuello: cilindro vertical desde la parte más baja de la cadena
+    // que pasa por detrás del cuello, hacia arriba. Si arrancara más arriba, la
+    // vuelta trasera se vería a través del cuello por debajo de él; más abajo,
+    // taparía el arranque de la caída, que va por delante y debe verse.
+    //
+    // Solo cuenta la cadena **claramente** detrás del eje (medio radio): con
+    // el collar inclinado, el arranque de la caída queda justo en el eje, y
+    // contarlo bajaba la base hasta tapar los costados de la caída: el collar
+    // se veía partido (visto en dispositivo, 2026-10-29).
+    final ct = math.cos(tilt), st = math.sin(tilt);
+    var base = double.infinity;
+    for (final p in girados) {
+      final y = p.y - centro.y, z = p.z - ejeZ;
+      // Misma rotación que `inclinado`.
+      if (st * y + ct * z < -radioCuello / 2) {
+        base = math.min(base, ct * y - st * z);
+      }
+    }
+    if (!base.isFinite) base = collar.backBottomY - centro.y;
+    final altoCuello = ancho * _neckOccluderHeight;
+    final cuello = three.Mesh(
+      three.CylinderGeometry(radioCuello * 0.92, radioCuello, altoCuello, 48),
+      three.MeshBasicMaterial.fromMap({'colorWrite': false}),
+    )
+      ..renderOrder = -1
+      ..position.setValues(0, base + altoCuello / 2, 0);
+    holder.add(cuello);
+    _necklaceNeck = cuello;
+
+    final wire = three.Mesh(
+      cuello.geometry,
+      three.MeshBasicMaterial.fromMap({
+        'color': 0xff2020,
+        'wireframe': true,
+        'transparent': true,
+        'opacity': 0.55,
+        'depthTest': false,
+        'depthWrite': false,
+      }),
+    )
+      ..renderOrder = 10
+      ..visible = widget.showOccluder;
+    cuello.add(wire);
+    _necklaceWire = wire;
+
+    viewer.scene.add(holder);
+    _jewel = holder;
+  }
+
+  /// Dimensiona y orienta el collar para la pose actual (la posición ya la
+  /// puso `_applyAnchor`).
+  ///
+  /// El tamaño sale del cuello: el hueco del modelo se escala para que mida
+  /// el cuello más la holgura. Escalarla por el ancho de hombros, que es lo
+  /// que mide la estrategia, la dejaba unas tres veces más grande.
+  void _applyNecklaceAnchor(
+    three.Object3D jewel,
+    AnchorPose anchor,
+    double pxToWorld,
+  ) {
+    final collar = _collar;
+    final cuelloPx = widget.neckDiameterPx;
+    if (collar == null || cuelloPx == null) {
+      jewel.visible = false;
+      return;
+    }
+
+    // Sin base medida (iOS) se conserva el ajuste anterior: hueco igual a la
+    // columna por [_holguraDelCollar].
+    final basePx = widget.neckBasePx ??
+        cuelloPx * _holguraDelCollar / _holguraSobreBase;
+    final factor = basePx * pxToWorld * _holguraSobreBase / collar.holeWidth;
+    jewel.scale.setValues(factor, factor, factor);
+
+    // Con la base medida, el proxy se lleva a [_proxySobreHueco] del hueco.
+    // Sin ella (iOS) se queda como se construyó.
+    if (widget.neckBasePx != null) {
+      const k = _proxySobreHueco * _holguraDelCollar;
+      _necklaceNeck?.scale.setValues(k, 1, k);
+    }
+
+    // Primero el giro del torso alrededor de su vertical y después la
+    // inclinación de los hombros en el plano de la imagen.
+    final yaw = anchor.yawRadians ?? 0;
+    final zonaMuerta = _necklaceYawDeadZoneDeg * math.pi / 180;
+    final yawUtil = yaw.abs() <= zonaMuerta
+        ? 0.0
+        : yaw.abs() >= 2 * zonaMuerta
+            ? yaw
+            : yaw.sign * 2 * (yaw.abs() - zonaMuerta);
+    // El giro se mide sobre la imagen: es relativo a la línea de visión hacia
+    // el cuello, no al eje de la cámara. La cámara virtual vuelve a aplicar la
+    // perspectiva, que con el cuello a un lado del centro empuja el frente del
+    // collar hacia afuera; sin descontarla, ese empuje anulaba el giro medido
+    // y el collar quedaba mirando a la cámara en vez de hacia donde mira el
+    // cuerpo (visto en dispositivo, 2026-11-05: girado, con el cuello a la
+    // izquierda, la caída quedaba recta).
+    final linea = math.atan2(jewel.position.x, -jewel.position.z);
+    final giroTorso = three.Quaternion()
+      ..setFromAxisAngle(three.Vector3(0, 1, 0), yawUtil - linea);
+    final inclinacion = three.Quaternion()
+      ..setFromAxisAngle(
+        three.Vector3(0, 0, 1),
+        -anchor.rollRadians * _necklaceRollFollow,
+      );
+    inclinacion.multiply(giroTorso);
+
+    jewel.quaternion.setFrom(inclinacion);
   }
 
   /// Recorta la metalicidad de los materiales a [_metalnessMax].
@@ -360,6 +644,7 @@ class _JewelrySceneState extends State<JewelryScene> {
   void didUpdateWidget(covariant JewelryScene oldWidget) {
     super.didUpdateWidget(oldWidget);
     _occluderWire?.visible = widget.showOccluder;
+    _necklaceWire?.visible = widget.showOccluder;
     _applyAnchor();
   }
 
@@ -410,6 +695,11 @@ class _JewelrySceneState extends State<JewelryScene> {
     final ndcY = 1 - screenY / area.height * 2;
 
     jewel.position.setValues(ndcX * halfWidth, ndcY * halfHeight, -_depth);
+
+    if (widget.necklace) {
+      _applyNecklaceAnchor(jewel, anchor, 2 * halfWidth / area.width);
+      return;
+    }
 
     // El tamaño se pide en píxeles y se traduce al ancho de mundo que ocupan a
     // esta distancia.
