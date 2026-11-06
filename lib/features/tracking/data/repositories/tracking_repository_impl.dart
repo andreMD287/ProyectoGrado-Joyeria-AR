@@ -44,10 +44,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// guardia `_busy` ya impide encolar; se mantiene el techo de 10 FPS con el
   /// que se validaron aretes y collares.
   ///
-  /// Cuello (MediaPipe): la cara tarda 15–60 ms en CPU y el guardia `_busy`
-  /// ya espera a cada respuesta, así que el techo solo añadiría retardo.
-  static int _minIntervalMsFor(DetectorKind kind) =>
-      kind == DetectorKind.hand || kind == DetectorKind.neck ? 33 : 100;
+  /// Cuello (MediaPipe): va en tubería y responde enseguida con el último
+  /// resultado, así que el techo solo limita cuántos frames se copian al
+  /// nativo. 25 por segundo sobran para una cara que se procesa a ~15.
+  static int _minIntervalMsFor(DetectorKind kind) => switch (kind) {
+        DetectorKind.hand => 33,
+        DetectorKind.neck => 40,
+        _ => 100,
+      };
 
   /// Frecuencia de detección de referencia para dimensionar el margen de
   /// pérdida de tracking.
@@ -57,9 +61,17 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// decodificar.
   ///
   /// La medición en compilación AOT (`--profile`) dio lo mismo que en
-  /// depuración, así que el límite **no** está en la ejecución de Dart. Queda
-  /// por confirmar dónde está; la sospecha es el transporte de cada
-  /// `CameraImage` (unos 690 KB en yuv420 a 720x480) desde la plataforma.
+  /// depuración, así que el límite **no** está en la ejecución de Dart.
+  ///
+  /// Con collares (2026-11-06, Galaxy A15, `--profile`) se midió dónde está:
+  /// con el collar activo **la cámara misma entrega ~11 frames por segundo**
+  /// a Dart, y sin cara a la vista (sin segmentación ni malla facial) sube a
+  /// ~19. El teléfono está saturado: el render 3D, la segmentación en GPU y
+  /// la malla facial en CPU compiten con la cámara, que descarta frames. Por
+  /// eso no ayudaron ni sacar el cuello del isolate (una copia menos del
+  /// frame) ni acelerar la conversión de la imagen en el nativo: los frames
+  /// que llegaban eran los mismos. Lo que queda es quitar carga (segmentar el
+  /// cuello menos seguido o bajar la resolución de la cámara).
   ///
   /// No se usa para afinar los filtros: el corte del One Euro va en Hz, así
   /// que su retardo en segundos no depende de la frecuencia de muestreo.
