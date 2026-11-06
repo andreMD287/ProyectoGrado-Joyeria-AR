@@ -1,403 +1,216 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-class SplashScreen extends StatefulWidget {
+import '../../../../app/theme.dart';
+
+/// Pantalla de entrada pública: no hay cuentas, registro ni autenticación.
+class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
-  late final AnimationController _fadeController;
-  late final AnimationController _progressController;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
-
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2800),
-    );
-
-    _fadeController.forward();
-    _progressController.forward();
-
-    Future.delayed(const Duration(milliseconds: 3200), () {
-      if (mounted) {
-        context.go('/catalog');
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _fadeController.dispose();
-    _progressController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    const background = Color(0xFFFBF7F2);
-    const espresso = Color(0xFF3A2419);
-    const gold = Color(0xFFB4895B);
-    const champagne = Color(0xFFD8BE9A);
-
+    final screen = MediaQuery.sizeOf(context);
     return Scaffold(
-      backgroundColor: background,
-      body: Stack(
-        children: [
-          const Positioned.fill(
-            child: CustomPaint(
-              painter: _BackgroundRingsPainter(),
+      backgroundColor: JoyeriaPalette.background,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            const Positioned(top: 8, left: 4, child: _Sprig(mirror: false)),
+            const Positioned(
+              right: 8,
+              bottom: 132,
+              child: _Sprig(mirror: true),
             ),
-          ),
-
-          SafeArea(
-            child: FadeTransition(
-              opacity: CurvedAnimation(
-                parent: _fadeController,
-                curve: Curves.easeOut,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: Column(
-                  children: [
-                    const Spacer(flex: 2),
-
-                    // Joya decorativa superior
-                    const SizedBox(
-                      width: 290,
-                      height: 125,
-                      child: CustomPaint(
-                        painter: _DiamondArcPainter(),
-                      ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(30, 16, 30, 30),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 24),
+                  const Text(
+                    'COLECCIÓN ROCÍO  ·  JOYERÍA AR',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 2.4,
+                      color: JoyeriaPalette.gold,
+                      fontWeight: FontWeight.w600,
                     ),
-
-                    const SizedBox(height: 10),
-
-                    // Badge AR READY
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 21,
-                        vertical: 11,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFF956C48),
-                            Color(0xFF795238),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF8F6846)
-                                .withValues(alpha: 0.22),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.view_in_ar_outlined,
-                            size: 17,
-                            color: Color(0xFFF6EBDD),
-                          ),
-                          SizedBox(width: 9),
-                          Text(
-                            'AR READY',
-                            style: TextStyle(
-                              color: Color(0xFFFFF8EF),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 2.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 38),
-
-                    const Text(
-                      'C A S A   D E',
-                      style: TextStyle(
-                        color: gold,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 3,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    const Text(
-                      'Joyería',
-                      style: TextStyle(
-                        color: espresso,
-                        fontSize: 70,
-                        height: 1,
-                        fontFamily: 'Georgia',
-                        fontWeight: FontWeight.w400,
-                        letterSpacing: -2,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // AR + líneas decorativas
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 72,
-                          height: 1,
-                          color: champagne,
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 18),
-                          child: Text(
-                            'AR',
-                            style: TextStyle(
-                              color: gold,
-                              fontSize: 34,
-                              fontFamily: 'Georgia',
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          width: 72,
-                          height: 1,
-                          color: champagne,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 22),
-
-                    const FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        'REALIDAD AUMENTADA  ·  JOYERÍA FINA',
-                        style: TextStyle(
-                          color: gold,
-                          fontSize: 11,
-                          letterSpacing: 2.1,
-                        ),
-                      ),
-                    ),
-
-                    const Spacer(flex: 3),
-
-                    // Barra de carga animada
-                    SizedBox(
-                      width: 220,
-                      child: AnimatedBuilder(
-                        animation: _progressController,
-                        builder: (context, child) {
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: LinearProgressIndicator(
-                              value: _progressController.value,
-                              minHeight: 1.8,
-                              backgroundColor:
-                                  champagne.withValues(alpha: 0.30),
-                              valueColor:
-                                  const AlwaysStoppedAnimation<Color>(
-                                gold,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    const Text(
-                      'C A R G A N D O   E X P E R I E N C I A',
+                  ),
+                  const Spacer(flex: 4),
+                  const Icon(
+                    Icons.diamond_outlined,
+                    size: 68,
+                    color: JoyeriaPalette.gold,
+                  ),
+                  const SizedBox(height: 22),
+                  const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Joyería AR',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Color(0xFFBE956D),
-                        fontSize: 9.5,
-                        letterSpacing: 1.7,
+                        fontSize: 48,
+                        fontFamily: 'Georgia',
+                        color: JoyeriaPalette.espresso,
                       ),
                     ),
-
-                    const Spacer(),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _LineDecoration(),
+                      SizedBox(width: 12),
+                      Icon(
+                        Icons.auto_awesome,
+                        size: 11,
+                        color: JoyeriaPalette.gold,
+                      ),
+                      SizedBox(width: 12),
+                      _LineDecoration(),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  const Text(
+                    'Descubre tus joyas favoritas y\npruébatelas en realidad aumentada.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      height: 1.7,
+                      fontSize: 14,
+                      color: JoyeriaPalette.muted,
+                    ),
+                  ),
+                  const Spacer(flex: 3),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _CategoryPreview(
+                        icon: Icons.favorite_border,
+                        label: 'Collares',
+                      ),
+                      _CategoryPreview(
+                        icon: Icons.diamond_outlined,
+                        label: 'Aretes',
+                      ),
+                      _CategoryPreview(
+                        icon: Icons.watch_outlined,
+                        label: 'Pulseras',
+                      ),
+                    ],
+                  ),
+                  const Spacer(flex: 2),
+                  SizedBox(
+                    height: 56,
+                    child: FilledButton(
+                      onPressed: () => context.go('/home'),
+                      child: const Text(
+                        'Explorar colección',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: .2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: screen.height < 650 ? 8 : 20),
+                  const Text(
+                    'Explora sin crear una cuenta',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: JoyeriaPalette.muted, fontSize: 11),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-// Círculos decorativos suaves del fondo.
-class _BackgroundRingsPainter extends CustomPainter {
-  const _BackgroundRingsPainter();
-
+class _LineDecoration extends StatelessWidget {
+  const _LineDecoration();
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(
-      size.width / 2,
-      size.height * 0.43,
-    );
-
-    final paint = Paint()
-      ..color = const Color(0xFFD8BE9A).withValues(alpha: 0.22)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8;
-
-    final radii = [
-      size.width * 0.45,
-      size.width * 0.72,
-      size.width * 1.03,
-    ];
-
-    for (final radius in radii) {
-      canvas.drawCircle(center, radius, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) =>
+      Container(width: 46, height: 1, color: JoyeriaPalette.stroke);
 }
 
-// Arco superior de diamantes.
-class _DiamondArcPainter extends CustomPainter {
-  const _DiamondArcPainter();
+class _CategoryPreview extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _CategoryPreview({required this.icon, required this.label});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(
-      size.width / 2,
-      size.height * 1.05,
-    );
-
-    final radius = size.width * 0.39;
-
-    const startAngle = math.pi + 0.34;
-    const endAngle = (2 * math.pi) - 0.34;
-
-    final chainPaint = Paint()
-      ..color = const Color(0xFFC59A6B).withValues(alpha: 0.65)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    final rect = Rect.fromCircle(
-      center: center,
-      radius: radius,
-    );
-
-    canvas.drawArc(
-      rect,
-      startAngle,
-      endAngle - startAngle,
-      false,
-      chainPaint,
-    );
-
-    const diamondCount = 21;
-
-    for (int i = 0; i < diamondCount; i++) {
-      final fraction = i / (diamondCount - 1);
-
-      final angle =
-          startAngle + ((endAngle - startAngle) * fraction);
-
-      final x = center.dx + radius * math.cos(angle);
-      final y = center.dy + radius * math.sin(angle);
-
-      final centerDistance = (fraction - 0.5).abs() * 2;
-
-      final diamondSize =
-          3.7 + (1 - centerDistance) * 3.8;
-
-      _drawDiamond(
-        canvas,
-        Offset(x, y),
-        diamondSize,
-      );
-    }
-  }
-
-  void _drawDiamond(
-    Canvas canvas,
-    Offset center,
-    double size,
-  ) {
-    final shadowPaint = Paint()
-      ..color = const Color(0xFFB58755).withValues(alpha: 0.15)
-      ..maskFilter = const MaskFilter.blur(
-        BlurStyle.normal,
-        3,
-      );
-
-    canvas.drawCircle(
-      center + const Offset(0, 2),
-      size,
-      shadowPaint,
-    );
-
-    final goldPaint = Paint()
-      ..color = const Color(0xFFC99A63)
-      ..style = PaintingStyle.fill;
-
-    final gemPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Color(0xFFFFFFFF),
-          Color(0xFFF3E7D8),
-          Color(0xFFFFFFFF),
-        ],
-      ).createShader(
-        Rect.fromCenter(
-          center: center,
-          width: size * 2,
-          height: size * 2,
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: JoyeriaPalette.surface,
+            border: Border.all(color: JoyeriaPalette.stroke),
+          ),
+          child: Icon(icon, color: JoyeriaPalette.rose, size: 20),
         ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: JoyeriaPalette.muted),
+        ),
+      ],
+    );
+  }
+}
+
+/// Ramita decorativa dibujada en Flutter: no exige imágenes externas.
+class _Sprig extends StatelessWidget {
+  final bool mirror;
+  const _Sprig({required this.mirror});
+  @override
+  Widget build(BuildContext context) {
+    return Transform.flip(
+      flipX: mirror,
+      flipY: mirror,
+      child: SizedBox(
+        width: 106,
+        height: 132,
+        child: CustomPaint(painter: _SprigPainter()),
+      ),
+    );
+  }
+}
+
+class _SprigPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final branch = Paint()
+      ..color = JoyeriaPalette.mutedRose.withValues(alpha: .50)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final vine = Path()
+      ..moveTo(size.width * .10, size.height * .96)
+      ..cubicTo(
+        size.width * .52,
+        size.height * .64,
+        size.width * .18,
+        size.height * .37,
+        size.width * .88,
+        size.height * .04,
       );
-
-    final outer = Path()
-      ..moveTo(center.dx, center.dy - size)
-      ..lineTo(center.dx + size, center.dy)
-      ..lineTo(center.dx, center.dy + size)
-      ..lineTo(center.dx - size, center.dy)
-      ..close();
-
-    canvas.drawPath(outer, goldPaint);
-
-    final innerSize = size * 0.70;
-
-    final inner = Path()
-      ..moveTo(center.dx, center.dy - innerSize)
-      ..lineTo(center.dx + innerSize, center.dy)
-      ..lineTo(center.dx, center.dy + innerSize)
-      ..lineTo(center.dx - innerSize, center.dy)
-      ..close();
-
-    canvas.drawPath(inner, gemPaint);
+    canvas.drawPath(vine, branch);
+    for (var i = 0; i < 5; i++) {
+      final y = size.height * (.19 + i * .15);
+      final x = size.width * (.76 - i * .12);
+      final side = i.isEven ? -1.0 : 1.0;
+      final p = Path()
+        ..moveTo(x, y)
+        ..quadraticBezierTo(x + side * 31, y - 28, x + side * 38, y - 7)
+        ..quadraticBezierTo(x + side * 19, y + 9, x, y);
+      canvas.drawPath(p, branch);
+    }
   }
 
   @override
