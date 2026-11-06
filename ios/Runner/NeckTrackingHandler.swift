@@ -58,14 +58,17 @@ class NeckTrackingHandler: NSObject {
     channel.setMethodCallHandler { [weak self] call, result in
       self?.handle(call, result: result)
     }
-    // Precarga: el segmentador en GPU tarda en arrancar la primera vez.
-    faceQueue.async { [weak self] in _ = self?.ensureFace() }
-    segQueue.async { [weak self] in _ = self?.ensureSegmenter() }
+    // Sin precarga al abrir la app: MediaPipe solo se toca cuando Dart llama a
+    // `start`, o sea, con `iosNeckTrackerEnabled` encendido. Así, mientras esté
+    // apagado, un fallo de MediaPipe no puede tumbar la app.
   }
 
   private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "start":
+      // Carga los modelos en segundo plano (la primera vez; luego ya están).
+      faceQueue.async { [weak self] in _ = self?.ensureFace() }
+      segQueue.async { [weak self] in _ = self?.ensureSegmenter() }
       lock.lock()
       active = true
       neck = nil
