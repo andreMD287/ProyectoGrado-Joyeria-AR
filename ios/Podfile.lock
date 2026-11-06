@@ -53,6 +53,11 @@ PODS:
   - FirebaseRemoteConfigInterop (11.15.0)
   - FirebaseSharedSwift (11.15.0)
   - Flutter (1.0.0)
+  - flutter_angle (0.4.2):
+    - Flutter
+    - FlutterAngle (~> 0.0.8)
+    - FlutterMacOS
+  - FlutterAngle (0.0.8)
   - geolocator_apple (1.2.0):
     - Flutter
     - FlutterMacOS
@@ -105,6 +110,9 @@ PODS:
   - LoggerAPI (1.9.200):
     - Logging (~> 1.1)
   - Logging (1.4.0)
+  - MediaPipeTasksCommon (0.10.35)
+  - MediaPipeTasksVision (0.10.35):
+    - MediaPipeTasksCommon (= 0.10.35)
   - MLImage (1.0.0-beta8)
   - MLKitCommon (14.0.0):
     - GoogleDataTransport (~> 10.0)
@@ -150,6 +158,8 @@ PODS:
     - BlueRSA (~> 1.0)
     - KituraContracts (~> 1.2)
     - LoggerAPI (~> 1.7)
+  - three_js_sensors (0.2.0):
+    - Flutter
   - url_launcher_ios (0.0.1):
     - Flutter
   - webview_flutter_wkwebview (0.0.1):
@@ -160,11 +170,14 @@ DEPENDENCIES:
   - ar_flutter_plugin_2 (from `.symlinks/plugins/ar_flutter_plugin_2/ios`)
   - camera_avfoundation (from `.symlinks/plugins/camera_avfoundation/darwin`)
   - Flutter (from `Flutter`)
+  - flutter_angle (from `.symlinks/plugins/flutter_angle/darwin`)
   - geolocator_apple (from `.symlinks/plugins/geolocator_apple/darwin`)
   - google_mlkit_commons (from `.symlinks/plugins/google_mlkit_commons/ios`)
   - google_mlkit_face_detection (from `.symlinks/plugins/google_mlkit_face_detection/ios`)
   - google_mlkit_pose_detection (from `.symlinks/plugins/google_mlkit_pose_detection/ios`)
+  - MediaPipeTasksVision (= 0.10.35)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - three_js_sensors (from `.symlinks/plugins/three_js_sensors/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - webview_flutter_wkwebview (from `.symlinks/plugins/webview_flutter_wkwebview/darwin`)
 
@@ -182,6 +195,7 @@ SPEC REPOS:
     - FirebaseRemoteConfig
     - FirebaseRemoteConfigInterop
     - FirebaseSharedSwift
+    - FlutterAngle
     - GLTFSceneKit
     - GoogleDataTransport
     - GoogleMLKit
@@ -191,6 +205,8 @@ SPEC REPOS:
     - KituraContracts
     - LoggerAPI
     - Logging
+    - MediaPipeTasksCommon
+    - MediaPipeTasksVision
     - MLImage
     - MLKitCommon
     - MLKitFaceDetection
@@ -210,6 +226,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/camera_avfoundation/darwin"
   Flutter:
     :path: Flutter
+  flutter_angle:
+    :path: ".symlinks/plugins/flutter_angle/darwin"
   geolocator_apple:
     :path: ".symlinks/plugins/geolocator_apple/darwin"
   google_mlkit_commons:
@@ -220,6 +238,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/google_mlkit_pose_detection/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  three_js_sensors:
+    :path: ".symlinks/plugins/three_js_sensors/ios"
   url_launcher_ios:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
   webview_flutter_wkwebview:
@@ -241,6 +261,8 @@ SPEC CHECKSUMS:
   FirebaseRemoteConfigInterop: 1c6135e8a094cc6368949f5faeeca7ee8948b8aa
   FirebaseSharedSwift: e17c654ef1f1a616b0b33054e663ad1035c8fd40
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  flutter_angle: 68742dae62c908b37adc0300c1d09e56064d54b4
+  FlutterAngle: c810891af800750361b1d0e7cc944f2338d5ae18
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
   GLTFSceneKit: d1b437c514ba2aed5555afb0fddd64e030612d57
   google_mlkit_commons: a5e4ffae5bc59ea4c7b9025dc72cb6cb79dc1166
@@ -254,6 +276,8 @@ SPEC CHECKSUMS:
   KituraContracts: e845e60dc8627ad0a76fa55ef20a45451d8f830b
   LoggerAPI: ad9c4a6f1e32f518fdb43a1347ac14d765ab5e3d
   Logging: beeb016c9c80cf77042d62e83495816847ef108b
+  MediaPipeTasksCommon: ae27d88c4d185db114a1a768c504f8270dda79b5
+  MediaPipeTasksVision: 1d6c3efa89830a131dbd0dc4fb80dea283fac521
   MLImage: 0de5c6c2bf9e93b80ef752e2797f0836f03b58c0
   MLKitCommon: 47d47b50a031d00db62f1b0efe5a1d8b09a3b2e6
   MLKitFaceDetection: 32549f1e70e6e7731261bf9cea2b74095e2531cb
@@ -266,9 +290,10 @@ SPEC CHECKSUMS:
   permission_handler_apple: 92d754bbaa7361d436db2d6c3c1c2a0fdcec462e
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   SwiftJWT: 88c412708f58c169d431d344c87bc79a87c830ae
+  three_js_sensors: 588c345b9ae356162449f14d11f7d1cf49a713d0
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
-PODFILE CHECKSUM: 54f052d20f3aa5a284922c93d8a2d1e2d8d0494c
+PODFILE CHECKSUM: 096ac45f66264109e674f34c02b9e219e56801a5
 
 COCOAPODS: 1.16.2

@@ -35,9 +35,20 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   # MediaPipe Tasks para el cuello de los collares (NeckTrackingHandler.swift).
-  # En CocoaPods no está la 0.10.29 que usa Android; 0.10.21 tiene las mismas
-  # tareas (FaceLandmarker, ImageSegmenter) y es la más usada.
-  pod 'MediaPipeTasksVision', '0.10.21'
+  # En CocoaPods no está la 0.10.29 que usa Android.
+  #
+  # Historial de versiones probadas (crash de arranque con EXC_BAD_ACCESS en
+  # mediapipe::GlobalFactoryRegistry con 0.10.21, por choque de símbolos C++
+  # — abseil/protobuf empotrados — contra los pods de ML Kit que ya usa el
+  # resto de la app):
+  # - 0.10.21: crash de arranque (registro global).
+  # - 1.0.0: el crash de arranque desaparece (abseil interno actualizado de
+  #   oct-2023 a ene-2025), pero compila y crashea distinto, dentro de
+  #   `FaceLandmarker(options:)` — posible cambio de comportamiento de
+  #   `FaceLandmarkerOptions` por el salto grande de versión.
+  # - 0.10.35: probando como punto intermedio, más cerca de 1.0.0 en abseil
+  #   pero sin el salto completo de ruptura de API de la 1.0.0.
+  pod 'MediaPipeTasksVision', '0.10.35'
   target 'RunnerTests' do
     inherit! :search_paths
   end

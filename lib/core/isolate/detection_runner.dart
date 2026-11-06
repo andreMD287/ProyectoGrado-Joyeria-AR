@@ -50,10 +50,12 @@ ImageFormatGroup imageFormatGroupFor(DetectorKind kind) => switch (kind) {
 
 /// Seguimiento del cuello en iOS (`ios/Runner/NeckTrackingHandler.swift`).
 ///
-/// Está escrito siguiendo la versión de Android, pero **no se ha probado en un
-/// iPhone**. Mientras esté en `false`, los collares en iOS siguen con los
-/// hombros de ML Kit Pose. Ver `docs/IOS_SEGUIMIENTO_CUELLO.md` para lo que hay
-/// que verificar antes de encenderlo.
+/// Está escrito siguiendo la versión de Android. Probado por primera vez en
+/// un iPhone el 2026-11-05: **no arranca** — crashea al crear el
+/// `FaceLandmarker`, por un conflicto entre MediaPipe y ANGLE/`three_js` que
+/// no depende de este código (ver `docs/IOS_SEGUIMIENTO_CUELLO.md`, sección
+/// "Resultado de la primera prueba en iPhone"). Mientras esté en `false`, los
+/// collares en iOS siguen con los hombros de ML Kit Pose.
 const bool iosNeckTrackerEnabled = false;
 
 /// Crea el detector que corresponde al tipo y a la plataforma.
