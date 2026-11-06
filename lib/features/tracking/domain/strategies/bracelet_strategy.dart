@@ -299,8 +299,15 @@ class BraceletStrategy implements TrackingStrategy {
       // mismo error. Se le aplica el mismo giro alrededor de la línea de
       // visión: x e y del marco métrico van en las mismas direcciones que las
       // de la imagen, y la componente de profundidad no cambia.
+      //
+      // Sin reconstrucción métrica (hoy, iOS: ver `_planarAxis`) se aproxima
+      // con la misma dirección que se mide en pantalla y profundidad cero, ya
+      // girada hacia el antebrazo si la sonda lo vio (`dirX`/`dirY`, en vez
+      // del eje crudo de la mano) — eso es lo que faltaba para que iOS
+      // también se beneficie de la corrección de la sonda, aunque no tenga
+      // sonda propia todavía.
       axis3D: metrico == null
-          ? null
+          ? _planarAxis(dirX, dirY)
           : Vec3(
               metrico.axis.x * cosD - metrico.axis.y * sinD,
               metrico.axis.x * sinD + metrico.axis.y * cosD,
@@ -445,6 +452,31 @@ class BraceletStrategy implements TrackingStrategy {
     );
   }
 
+  /// Eje 3D aproximado cuando no hay reconstrucción métrica (hoy, iOS:
+  /// Apple Vision no la entrega, a diferencia de MediaPipe en Android — ver
+  /// [computeAnchor]). Sin ella, `JewelryScene` nunca orienta el aro
+  /// alrededor del brazo ni activa el oclusor: se queda con la orientación de
+  /// exportación del modelo, girada solo en el plano de pantalla. Visto en
+  /// dispositivo (iPhone, 2026-10-23): el aro se ve como un disco plano
+  /// encima de la muñeca en vez de rodearla, y nunca se tapa.
+  ///
+  /// Mejor una aproximación que nada: misma dirección que ya se mide en
+  /// pantalla —[dirX]/[dirY], que ya incluyen el giro hacia el antebrazo real
+  /// cuando la sonda lo vio (ver [_updateForearm]), no el eje crudo de la
+  /// mano— con profundidad **cero**: asume que el antebrazo no se acerca ni
+  /// se aleja de la cámara, solo que cruza la imagen en algún ángulo. No
+  /// captura el escorzo cuando el brazo se acerca o se aleja de la cámara,
+  /// pero alinea el aro con el brazo en vez de dejarlo siempre de cara a
+  /// ella.
+  ///
+  /// [dirX]/[dirY] no pueden ser ambos cero cuando se llega aquí —
+  /// [computeAnchor] ya descartó ese caso al validar `axisLength`—, pero se
+  /// protege igual por si se usa fuera de ese contexto.
+  static Vec3 _planarAxis(double dirX, double dirY) {
+    final largo = math.sqrt(dirX * dirX + dirY * dirY);
+    if (largo <= 0) return const Vec3(0, 1, 0);
+    return Vec3(dirX / largo, dirY / largo, 0);
+  }
 
   /// Longitud de un desplazamiento normalizado medida en pantalla, expresada
   /// en unidades del ancho del frame. Sin la corrección por [imageAspect] una
