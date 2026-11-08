@@ -1,4 +1,5 @@
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/head_geometry.dart';
 
 /// Resultado agnóstico de plataforma que consume el render AR: el punto de
 /// anclaje (ya estabilizado), una orientación estimada y el tamaño aparente
@@ -84,6 +85,16 @@ class AnchorPose {
   /// `null` cuando no se pudo ver el miembro.
   final double? limbWidth;
 
+  /// Orientación de la cabeza para aretes con la malla facial (Android). Con
+  /// ella [position] es el origen de la cabeza (ver `HeadModel`) y [scale] el
+  /// ancho de la cara, y el render cuelga los aretes de la cabeza en vez de
+  /// dibujar uno suelto. `null` con cualquier otro detector.
+  final HeadAxes? headAxes;
+
+  /// Con [headAxes], qué arete se muestra: el del lado local -1 o +1, o los
+  /// dos si es `null`.
+  final int? earringSide;
+
   final double confidence;
 
   const AnchorPose({
@@ -96,6 +107,8 @@ class AnchorPose {
     this.palmNormal3D,
     this.metricWidth,
     this.limbWidth,
+    this.headAxes,
+    this.earringSide,
     this.confidence = 1,
   });
 }

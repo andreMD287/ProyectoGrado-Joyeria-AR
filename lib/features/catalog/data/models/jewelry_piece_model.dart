@@ -1,3 +1,4 @@
+import '../../domain/entities/earring_type.dart';
 import '../../domain/entities/jewelry_category.dart';
 import '../../domain/entities/jewelry_piece.dart';
 
@@ -13,6 +14,8 @@ class JewelryPieceModel {
   final String? material;
   final String? descripcion;
   final double orientacionYawDeg;
+  final String? tipoArete;
+  final List<double>? puntoSujecion;
 
   const JewelryPieceModel({
     required this.id,
@@ -24,6 +27,8 @@ class JewelryPieceModel {
     this.material,
     this.descripcion,
     this.orientacionYawDeg = 0,
+    this.tipoArete,
+    this.puntoSujecion,
   });
 
   factory JewelryPieceModel.fromJson(Map<String, dynamic> json) {
@@ -38,7 +43,16 @@ class JewelryPieceModel {
       descripcion: json['descripcion'] as String?,
       orientacionYawDeg:
           (json['orientacion_yaw_deg'] as num?)?.toDouble() ?? 0,
+      tipoArete: json['tipo_arete'] as String?,
+      puntoSujecion: _punto(json['punto_sujecion']),
     );
+  }
+
+  /// `[x, y, z]` numérico, o `null` si falta o no tiene esa forma.
+  static List<double>? _punto(Object? valor) {
+    if (valor is! List || valor.length != 3) return null;
+    if (valor.any((v) => v is! num)) return null;
+    return [for (final v in valor) (v as num).toDouble()];
   }
 
   JewelryPiece toEntity() {
@@ -59,6 +73,8 @@ class JewelryPieceModel {
       material: material,
       descripcion: descripcion,
       orientacionYawDeg: orientacionYawDeg,
+      tipoArete: EarringType.tryFromId(tipoArete),
+      puntoSujecion: puntoSujecion,
     );
   }
 }

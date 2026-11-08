@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import '../../../../core/camera/camera_service.dart';
 import '../../../../core/filters/landmark_stabilizer.dart';
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/head_geometry.dart';
 import '../../../../core/isolate/detection_isolate.dart';
 import '../../../../core/isolate/detection_runner.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
@@ -47,9 +48,13 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// Cuello (MediaPipe): va en tubería y responde enseguida con el último
   /// resultado, así que el techo solo limita cuántos frames se copian al
   /// nativo. 25 por segundo sobran para una cara que se procesa a ~15.
+  ///
+  /// Cabeza para aretes: en Android es la misma tubería que el cuello. En iOS
+  /// es ML Kit Face y se queda con el techo de siempre.
   static int _minIntervalMsFor(DetectorKind kind) => switch (kind) {
         DetectorKind.hand => 33,
         DetectorKind.neck => 40,
+        DetectorKind.head => usesHeadMesh(kind) ? 40 : 100,
         _ => 100,
       };
 
@@ -103,8 +108,17 @@ class TrackingRepositoryImpl implements TrackingRepository {
     LandmarkStabilizer? stabilizer,
   }) : stabilizer = stabilizer ?? OneEuroStabilizer();
 
-  LandmarkStabilizer _stabilizerFor(JewelryCategory category) =>
+  LandmarkStabilizer _stabilizerFor(
+    JewelryCategory category,
+    DetectorKind kind,
+  ) =>
       switch (category) {
+        // Aretes con la malla facial (Android): la cabeza sale de MediaPipe,
+        // mucho más estable que la caja de ML Kit, y un corte tan bajo como el
+        // de abajo dejaba los aretes casi medio segundo detrás de la cara. De
+        // partida, a ajustar en dispositivo.
+        JewelryCategory.earring when usesHeadMesh(kind) =>
+          OneEuroStabilizer(minCutoff: 1.2, beta: 1.0),
         // Aretes: más suavizado — el bbox/landmarks faciales tiemblan más
         // que pose. Afinado y validado antes; se deja como estaba.
         JewelryCategory.earring =>
@@ -153,6 +167,13 @@ class TrackingRepositoryImpl implements TrackingRepository {
   ScalarStabilizer? _metricWidthStabilizer;
   ScalarStabilizer? _limbWidthStabilizer;
 
+  /// Ejes de la cabeza para aretes. La rotación de la malla facial tiembla
+  /// poco, pero una cabeza gira rápido: corte moderado en reposo y `beta`
+  /// alto para que el filtro se abra al girar. De partida, a ajustar en
+  /// dispositivo.
+  LandmarkStabilizer? _headXStabilizer;
+  LandmarkStabilizer? _headYStabilizer;
+
   @override
   Stream<TrackingFrame> trackingStream(JewelryCategory category) {
     final strategy = strategies[category];
@@ -168,7 +189,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
         _controller = controller;
         _activeCategory = category;
         strategy.reset();
-        _sessionStabilizer = _stabilizerFor(category);
+        _sessionStabilizer = _stabilizerFor(category, strategy.detectorKind);
         // Roll y escala se filtran con el mismo criterio que la posición.
         // El afinado anterior (minCutoff 0.3) partía de suponer ~10 Hz de
         // detección; a los 3.5 Hz reales daba medio segundo de retardo y en
@@ -200,6 +221,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // Mismo afinado que la escala: es otra medida de tamaño, y si late,
         // late la pieza entera.
         _limbWidthStabilizer = ScalarStabilizer(minCutoff: 0.5, beta: 0.1);
+        _headXStabilizer = OneEuroStabilizer(minCutoff: 1.0, beta: 1.5);
+        _headYStabilizer = OneEuroStabilizer(minCutoff: 1.0, beta: 1.5);
         _lost = true;
         _lastDetectionMs = 0;
         final runner = _runnerFor(strategy.detectorKind);
@@ -276,6 +299,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     final normal = anchor.palmNormal3D;
     final metricWidth = anchor.metricWidth;
     final limbWidth = anchor.limbWidth;
+    final head = anchor.headAxes;
     return AnchorPose(
       position: position,
       rollRadians:
@@ -298,6 +322,17 @@ class TrackingRepositoryImpl implements TrackingRepository {
       limbWidth: limbWidth == null
           ? null
           : _limbWidthStabilizer?.filter(limbWidth, tSeconds) ?? limbWidth,
+      // Cada eje se filtra por componentes y después se vuelven a hacer
+      // perpendiculares y unitarios: el filtro no conserva ninguna de las dos
+      // cosas, y unos ejes torcidos deformarían la cabeza.
+      headAxes: head == null
+          ? null
+          : HeadAxes.orthonormal(
+                _headXStabilizer?.filter(head.x, tSeconds) ?? head.x,
+                _headYStabilizer?.filter(head.y, tSeconds) ?? head.y,
+              ) ??
+              head,
+      earringSide: anchor.earringSide,
       confidence: anchor.confidence,
     );
   }
@@ -318,6 +353,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _metricWidthStabilizer?.reset();
     _limbWidthStabilizer?.reset();
     _yawStabilizer?.reset();
+    _headXStabilizer?.reset();
+    _headYStabilizer?.reset();
   }
 
   /// Relación ancho/alto del frame **ya rotado a vertical**, que es el marco en
@@ -358,6 +395,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _rollStabilizer = null;
     _scaleStabilizer = null;
     _yawStabilizer = null;
+    _headXStabilizer = null;
+    _headYStabilizer = null;
     stabilizer.reset();
     _lost = true;
     final controller = _controller;

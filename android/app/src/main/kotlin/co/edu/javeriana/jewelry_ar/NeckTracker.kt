@@ -55,6 +55,11 @@ import kotlin.math.sqrt
  * la prueba virtual: el segmentador en GPU tardaba ~20 s en arrancar y, como se
  * cerraba, la espera se repetía en cada entrada. Mientras la GPU no está lista
  * se segmenta en CPU.
+ *
+ * **Modo cabeza, para aretes** (`start` con `mode: "head"`). Usa la misma malla
+ * facial pero no segmenta: entrega más puntos de la cara ([HEAD_POINTS]) y la
+ * matriz de transformación facial, de la que Dart saca la rotación de la
+ * cabeza para colgar los aretes y su oclusión.
  */
 class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandler {
     companion object {
@@ -74,6 +79,14 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         private const val CHEEK_RIGHT = 454
         private const val NOSE = 1
         private val FACE_POINTS = intArrayOf(CHIN, CHEEK_LEFT, CHEEK_RIGHT, NOSE)
+
+        /**
+         * Puntos del modo cabeza, **en este orden**: tiene que coincidir con
+         * `headMeshPoints` en `head_detector_datasource.dart`.
+         */
+        private val HEAD_POINTS = intArrayOf(
+            234, 454, 10, 152, 1, 2, 33, 263, 93, 323, 132, 361, 58, 288,
+        )
 
         /** Ancho al que se reduce el frame para segmentar: el modelo es de 256. */
         private const val SEG_WIDTH = 240
@@ -117,6 +130,9 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
     }
 
     @Volatile private var active = false
+
+    /** Aretes: sin segmentación, con más puntos y la pose de la cabeza. */
+    @Volatile private var headMode = false
     @Volatile private var neck: Map<String, Any>? = null
     @Volatile private var neckAt = 0L
 
@@ -139,6 +155,7 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "start" -> {
+                headMode = call.argument<String>("mode") == "head"
                 active = true
                 neck = null
                 latest = null
@@ -193,6 +210,10 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
                     // cada uno: más rápido y más estable.
                     .setRunningMode(RunningMode.VIDEO)
                     .setNumFaces(1)
+                    // La pose de la cabeza para los aretes. Es un ajuste de la
+                    // malla ya calculada al modelo canónico: barato, y el
+                    // landmarker es el mismo para los dos modos.
+                    .setOutputFacialTransformationMatrixes(true)
                     .build(),
             ).also { face = it }
         } catch (e: Throwable) {
@@ -285,6 +306,26 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         val lms = result.faceLandmarks().firstOrNull()
         countFace(tConv - t0, SystemClock.uptimeMillis() - tConv)
         if (lms == null) return mapOf("face" to false)
+
+        if (headMode) {
+            val head = DoubleArray(HEAD_POINTS.size * 3)
+            for ((k, i) in HEAD_POINTS.withIndex()) {
+                head[k * 3] = lms[i].x().toDouble()
+                head[k * 3 + 1] = lms[i].y().toDouble()
+                head[k * 3 + 2] = lms[i].z().toDouble()
+            }
+            val out = HashMap<String, Any>()
+            out["face"] = true
+            out["points"] = head
+            // 4×4 tal cual la da MediaPipe (por columnas); Dart extrae la
+            // rotación y comprueba la convención.
+            val matrix = result.facialTransformationMatrixes()
+                .orElse(null)?.firstOrNull()
+            if (matrix != null && matrix.size == 16) {
+                out["matrix"] = DoubleArray(16) { matrix[it].toDouble() }
+            }
+            return out
+        }
 
         val points = DoubleArray(FACE_POINTS.size * 3)
         for ((k, i) in FACE_POINTS.withIndex()) {

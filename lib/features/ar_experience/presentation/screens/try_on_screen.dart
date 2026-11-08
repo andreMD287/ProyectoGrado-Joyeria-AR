@@ -13,6 +13,7 @@ import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/head_geometry.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 import '../../../tracking/domain/entities/landmark.dart';
 import '../../../tracking/domain/strategies/bracelet_strategy.dart';
@@ -1073,6 +1074,20 @@ class _ModelOverlay extends ConsumerWidget {
 
   bool get _isNecklace => piece.categoria == JewelryCategory.necklace;
 
+  /// Aretes colgados de la cabeza medida con la malla facial. **Solo
+  /// Android**: en iOS el arete sigue dibujándose como antes, con ML Kit Face.
+  EarringSetup? get _earringSetup {
+    if (piece.categoria != JewelryCategory.earring || !Platform.isAndroid) {
+      return null;
+    }
+    final punto = piece.puntoSujecion;
+    return EarringSetup(
+      hangs: piece.tipoArete?.hangs,
+      heightMm: piece.dimensionesMm.alto,
+      attachPoint: punto == null ? null : Vec3(punto[0], punto[1], punto[2]),
+    );
+  }
+
   /// Columna del cuello en pixeles, para collares.
   ///
   /// Con el cuello medido (Android) la da la estrategia en `limbWidth`. Si no,
@@ -1143,6 +1158,7 @@ class _ModelOverlay extends ConsumerWidget {
           necklace: _isNecklace,
           neckDiameterPx: _neckColumnPx(fit, anchor),
           neckBasePx: _neckBasePx(fit, anchor),
+          earring: _earringSetup,
         ),
       ),
     );
@@ -1329,6 +1345,28 @@ class _LandmarkPainter extends CustomPainter {
     // donde debe antes de fiarse de como sale girada la joya.
     final scale = a.scale;
     if (scale == null) return;
+
+    // Aretes con la malla facial: donde la cabeza invisible pone cada lóbulo.
+    // Es la referencia para calibrar `HeadModel.lobe` contra la oreja real.
+    final axes = a.headAxes;
+    if (axes != null && fit.imageHeight > 0) {
+      final lobePaint = Paint()..color = const Color(0xFFFFD166);
+      final aspect = fit.imageWidth / fit.imageHeight;
+      for (final side in const [-1, 1]) {
+        // Con la misma perspectiva que el render, para que el punto caiga
+        // donde se dibuja el arete también con la cabeza girada.
+        final p = headPointToImage(
+          local: HeadModel.lobeFor(side),
+          origin: a.position,
+          width: scale,
+          axes: axes,
+          aspect: aspect,
+          tanHalfFrameWidth: mediapipeTanHalfWidth(aspect),
+        );
+        canvas.drawCircle(Offset(fit.xOf(p.x), fit.yOf(p.y)), 5, lobePaint);
+      }
+    }
+
     final length = fit.lengthOf(scale);
     canvas.drawLine(
       center,

@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 
 import '../../features/tracking/data/datasources/android_hand_detector.dart';
 import '../../features/tracking/data/datasources/face_detector_datasource.dart';
+import '../../features/tracking/data/datasources/head_detector_datasource.dart';
 import '../../features/tracking/data/datasources/ios_hand_detector.dart';
 import '../../features/tracking/data/datasources/landmark_detector.dart';
 import '../../features/tracking/data/datasources/neck_detector_datasource.dart';
@@ -44,9 +45,15 @@ ImageFormatGroup imageFormatGroupFor(DetectorKind kind) => switch (kind) {
         Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
       DetectorKind.face ||
       DetectorKind.pose ||
-      DetectorKind.neck =>
+      DetectorKind.neck ||
+      DetectorKind.head =>
         Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
     };
+
+/// `true` si [kind] se resuelve con la malla facial de MediaPipe: aretes en
+/// Android. En iOS esos mismos aretes van con ML Kit Face, sin cambios.
+bool usesHeadMesh(DetectorKind kind) =>
+    kind == DetectorKind.head && Platform.isAndroid;
 
 /// Crea el detector que corresponde al tipo y a la plataforma.
 LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
@@ -56,6 +63,9 @@ LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
       DetectorKind.pose => PoseDetectorDataSource(),
       DetectorKind.neck =>
         Platform.isAndroid ? NeckDetectorDataSource() : PoseDetectorDataSource(),
+      DetectorKind.head => usesHeadMesh(kind)
+          ? HeadDetectorDataSource()
+          : FaceDetectorDataSource(),
     };
 
 /// `true` si el detector de [kind] tiene que correr en el isolate raíz.
