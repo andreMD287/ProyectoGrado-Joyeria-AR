@@ -46,6 +46,20 @@
       "orientacion_yaw_deg": 180
     },
     {
+      "id": "arete-colgante-01",
+      "nombre": "Arete colgante con piedra",
+      "categoria": "arete",
+      "tipo_anclaje": "lobulo",
+      "landmark_anclaje": null,
+      "modelo_glb": "assets/models/Aretes_Juanes.glb",
+      "foto": "assets/catalog/fotos/arete-gota-01.jpg",
+      "dimensiones_mm": { "alto": 25, "ancho": 15, "profundidad": 15 },
+      "material": "plata con piedra",
+      "descripcion": "",
+      "estado": "modelado",
+      "notas_material": "Piedra con KHR_materials_transmission; verificar cómo la dibuja el render AR (ver D1)."
+    },
+    {
       "id": "collar-cadena-01",
       "nombre": "Collar cadena fina con dije I",
       "categoria": "collar",
