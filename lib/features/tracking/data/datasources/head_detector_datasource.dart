@@ -1,6 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:flutter/services.dart' show MethodChannel;
+import 'package:flutter/services.dart' show EventChannel, MethodChannel;
 
 import '../../../../core/math/head_geometry.dart';
 import '../../domain/entities/head_observation.dart';
@@ -24,35 +24,47 @@ const List<int> headMeshPoints = [
 /// en modo `head`. **Solo Android**: en iOS los aretes siguen con ML Kit Face
 /// (ver `createLandmarkDetector`).
 ///
-/// Usa el mismo canal y la misma tubería que los collares (ver
-/// `NeckDetectorDataSource`): se entrega el frame y vuelve enseguida el último
-/// resultado; uno ya entregado vuelve vacío. En este modo el nativo no
-/// segmenta, que es la parte pesada.
-class HeadDetectorDataSource implements LandmarkDetector {
+/// Usa el mismo canal que los collares (ver `NeckDetectorDataSource`) para
+/// entregar los frames, pero no la misma respuesta: [detect] solo entrega el
+/// frame, y cada resultado llega por [results] apenas el nativo lo calcula
+/// (ver [PushesResults]). En este modo el nativo no segmenta, que es la parte
+/// pesada. Tiene que correr en el isolate raíz, el único que puede escuchar
+/// un `EventChannel`.
+class HeadDetectorDataSource implements LandmarkDetector, PushesResults {
   static const _channel = MethodChannel('jewelry_ar/neck');
+  static const _events = EventChannel('jewelry_ar/head_results');
 
-  int? _lastSeq;
+  /// Orientación del último frame entregado: hace falta para espejar los
+  /// resultados, que llegan por separado. Es constante durante una sesión.
+  int _orientation = 0;
 
   @override
   Future<void> initialize() =>
       _channel.invokeMethod<void>('start', {'mode': 'head'});
 
   @override
+  Stream<LandmarkFrame> get results =>
+      _events.receiveBroadcastStream().map((event) {
+        if (event is! Map) return LandmarkFrame.empty;
+        return headFrameFromNative(
+          event.cast<String, Object?>(),
+          _orientation,
+        );
+      });
+
+  @override
   Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation) async {
     if (frame.planes.length != 1) return LandmarkFrame.empty;
+    _orientation = sensorOrientation;
     final plane = frame.planes.first;
-    final result = await _channel.invokeMapMethod<String, Object?>('process', {
+    await _channel.invokeMethod<void>('process', {
       'bytes': plane.bytes,
       'width': frame.width,
       'height': frame.height,
       'stride': plane.bytesPerRow,
       'rotation': sensorOrientation,
     });
-    if (result == null) return LandmarkFrame.empty;
-    final seq = (result['seq'] as num?)?.toInt();
-    if (seq != null && seq == _lastSeq) return LandmarkFrame.empty;
-    _lastSeq = seq;
-    return headFrameFromNative(result, sensorOrientation);
+    return LandmarkFrame.empty;
   }
 
   @override

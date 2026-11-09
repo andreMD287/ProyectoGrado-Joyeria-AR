@@ -11,6 +11,7 @@ import '../../../../core/isolate/detection_isolate.dart';
 import '../../../../core/isolate/detection_runner.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../domain/entities/anchor_pose.dart';
+import '../../domain/entities/landmark_frame.dart';
 import '../../domain/entities/tracking_frame.dart';
 import '../../domain/repositories/tracking_repository.dart';
 import '../../domain/strategies/tracking_strategy.dart';
@@ -49,12 +50,16 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// resultado, así que el techo solo limita cuántos frames se copian al
   /// nativo. 25 por segundo sobran para una cara que se procesa a ~15.
   ///
-  /// Cabeza para aretes: en Android es la misma tubería que el cuello. En iOS
-  /// es ML Kit Face y se queda con el techo de siempre.
+  /// Cabeza para aretes: en Android es la misma tubería que el cuello, pero
+  /// sin segmentar. Con la conversión del frame más rápida la malla tarda
+  /// menos que lo que separa dos frames de la cámara, así que se le pasa cada
+  /// frame: con 40 ms se saltaba uno de cada dos y la cabeza se actualizaba a
+  /// la mitad del ritmo posible. En iOS es ML Kit Face y se queda con el techo
+  /// de siempre.
   static int _minIntervalMsFor(DetectorKind kind) => switch (kind) {
         DetectorKind.hand => 33,
         DetectorKind.neck => 40,
-        DetectorKind.head => usesHeadMesh(kind) ? 40 : 100,
+        DetectorKind.head => usesHeadMesh(kind) ? 25 : 100,
         _ => 100,
       };
 
@@ -102,6 +107,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
   int _lastDetectionMs = 0;
   bool _lost = true;
 
+  /// Con un detector que publica sus resultados ([DetectionRunner.results]),
+  /// la suscripción por la que llegan.
+  StreamSubscription<LandmarkFrame>? _results;
+
+  /// Relación de aspecto del último frame entregado, para los resultados que
+  /// llegan por [_results], separados de su frame.
+  double? _aspect;
+
   TrackingRepositoryImpl({
     required this.cameraService,
     required this.strategies,
@@ -115,10 +128,18 @@ class TrackingRepositoryImpl implements TrackingRepository {
       switch (category) {
         // Aretes con la malla facial (Android): la cabeza sale de MediaPipe,
         // mucho más estable que la caja de ML Kit, y un corte tan bajo como el
-        // de abajo dejaba los aretes casi medio segundo detrás de la cara. De
-        // partida, a ajustar en dispositivo.
+        // de abajo dejaba los aretes casi medio segundo detrás de la cara.
+        //
+        // Con beta = 1 el filtro casi no se abría al mover la cabeza: a 0,5
+        // anchos de frame por segundo el corte pasaba de 1,2 a 1,7 Hz y el
+        // arete se quedaba ~0,05 del frame por detrás de la cara, que es lo
+        // que se veía como que le costaba encontrar su sitio (2026-11-08). Con
+        // beta = 8 el corte sube a ~5 Hz en ese mismo movimiento y el retardo
+        // baja a un tercio. En reposo la malla tiembla ~0,002 del frame entre
+        // detecciones, y eso apenas abre el filtro. `dCutoff` más alto para
+        // que la velocidad, que es la que abre el filtro, no llegue tarde.
         JewelryCategory.earring when usesHeadMesh(kind) =>
-          OneEuroStabilizer(minCutoff: 1.2, beta: 1.0),
+          OneEuroStabilizer(minCutoff: 1.5, beta: 8, dCutoff: 2),
         // Aretes: más suavizado — el bbox/landmarks faciales tiemblan más
         // que pose. Afinado y validado antes; se deja como estaba.
         JewelryCategory.earring =>
@@ -169,14 +190,16 @@ class TrackingRepositoryImpl implements TrackingRepository {
 
   /// Ejes de la cabeza para aretes. La rotación de la malla facial tiembla
   /// poco, pero una cabeza gira rápido: corte moderado en reposo y `beta`
-  /// alto para que el filtro se abra al girar. De partida, a ajustar en
-  /// dispositivo.
+  /// alto para que el filtro se abra al girar. Los ejes son unitarios, así que
+  /// girando a 1 rad/s sus componentes cambian ~1 por segundo: con beta = 5 el
+  /// corte sube a ~6 Hz (antes 1,5 → ~2,5 Hz, unos 4° de retraso).
   LandmarkStabilizer? _headXStabilizer;
   LandmarkStabilizer? _headYStabilizer;
 
   /// Lóbulos de los aretes en el espacio de la cabeza. Salen de puntos del
   /// contorno, más ruidosos que la pose; respecto a la cabeza apenas se
-  /// mueven, así que se filtran fuerte.
+  /// mueven, así que se filtran más que ella. Con 0,6 Hz (~0,27 s) se veía al
+  /// arete deslizarse hasta su sitio después de cada giro.
   LandmarkStabilizer? _lobeNegStabilizer;
   LandmarkStabilizer? _lobePosStabilizer;
 
@@ -204,7 +227,16 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // La escala oscilaba un 4% con el brazo quieto, y eso hace latir el
         // tamano de la pieza. El tamano real cambia despacio, asi que admite
         // mucho mas suavizado del que tenia.
-        _scaleStabilizer = ScalarStabilizer(minCutoff: 0.5, beta: 0.1);
+        //
+        // Aretes con la malla facial: la escala es el ancho de la cara, y los
+        // lóbulos se ubican en anchos de cara desde el centro. Con 0,5 Hz el
+        // ancho llegaba ~0,3 s tarde al acercarse o alejarse, y los aretes se
+        // abrían o cerraban respecto a la cara. El ancho 3D de la malla tiembla
+        // poco, así que admite un corte mayor y un `beta` que lo abra.
+        _scaleStabilizer = category == JewelryCategory.earring &&
+                usesHeadMesh(strategy.detectorKind)
+            ? ScalarStabilizer(minCutoff: 1.0, beta: 10, dCutoff: 2)
+            : ScalarStabilizer(minCutoff: 0.5, beta: 0.1);
         // Yaw de pulseras: no da vuelta completa (queda en ±90°), así que no
         // necesita el manejo circular de AngleStabilizer. Mismo afinado que
         // roll/escala como punto de partida, a validar en dispositivo.
@@ -227,15 +259,28 @@ class TrackingRepositoryImpl implements TrackingRepository {
         // Mismo afinado que la escala: es otra medida de tamaño, y si late,
         // late la pieza entera.
         _limbWidthStabilizer = ScalarStabilizer(minCutoff: 0.5, beta: 0.1);
-        _headXStabilizer = OneEuroStabilizer(minCutoff: 1.0, beta: 1.5);
-        _headYStabilizer = OneEuroStabilizer(minCutoff: 1.0, beta: 1.5);
-        _lobeNegStabilizer = OneEuroStabilizer(minCutoff: 0.6, beta: 0.5);
-        _lobePosStabilizer = OneEuroStabilizer(minCutoff: 0.6, beta: 0.5);
+        _headXStabilizer =
+            OneEuroStabilizer(minCutoff: 1.5, beta: 5, dCutoff: 2);
+        _headYStabilizer =
+            OneEuroStabilizer(minCutoff: 1.5, beta: 5, dCutoff: 2);
+        _lobeNegStabilizer =
+            OneEuroStabilizer(minCutoff: 1.0, beta: 2, dCutoff: 2);
+        _lobePosStabilizer =
+            OneEuroStabilizer(minCutoff: 1.0, beta: 2, dCutoff: 2);
         _lost = true;
         _lastDetectionMs = 0;
         final runner = _runnerFor(strategy.detectorKind);
         _activeRunner = runner;
         await runner.start(strategy.detectorKind);
+        _results = runner.results?.listen((detection) {
+          final aspect = _aspect;
+          if (aspect == null) return;
+          try {
+            _onDetection(detection, strategy, aspect);
+          } catch (_) {
+            // Un resultado con error no debe cortar la sesión.
+          }
+        });
         await cameraService.startStream(
           (frame) => _onFrame(frame, strategy, runner),
           lensDirection: _lensFor(category),
@@ -263,39 +308,50 @@ class TrackingRepositoryImpl implements TrackingRepository {
     try {
       final orientation =
           cameraService.controller?.description.sensorOrientation ?? 0;
+      final aspect = uprightAspect(frame, orientation);
+      _aspect = aspect;
       final detection = await runner.detect(frame, orientation);
-      final anchor = strategy.computeAnchor(
-        detection,
-        imageAspect: uprightAspect(frame, orientation),
-      );
-      final controller = _controller;
-      if (controller == null || controller.isClosed) return;
-
-      if (anchor == null) {
-        // Se espera el margen de gracia antes de avisar de la pérdida, y se
-        // avisa una sola vez para no inundar la UI de reconstrucciones.
-        if (!_lost && now - _lastDetectionMs > _lostGraceMs) {
-          _lost = true;
-          _resetFilters();
-          controller.add(const TrackingFrame.lost());
-        }
-        return;
-      }
-
-      _lost = false;
-      _lastDetectionMs = now;
-
-      final s = _smooth(anchor, now / 1000.0);
-
-      controller.add(TrackingFrame(
-        anchor: s,
-        landmarks: detection.landmarks,
-      ));
+      // Lo detectado llega por su cuenta, por `_results`.
+      if (_results != null) return;
+      _onDetection(detection, strategy, aspect);
     } catch (_) {
       // Se descarta el frame con error para no interrumpir el stream.
     } finally {
       _busy = false;
     }
+  }
+
+  /// Ancla, estabiliza y publica lo detectado en un frame.
+  void _onDetection(
+    LandmarkFrame detection,
+    TrackingStrategy strategy,
+    double aspect,
+  ) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final anchor = strategy.computeAnchor(detection, imageAspect: aspect);
+    final controller = _controller;
+    if (controller == null || controller.isClosed) return;
+
+    if (anchor == null) {
+      // Se espera el margen de gracia antes de avisar de la pérdida, y se
+      // avisa una sola vez para no inundar la UI de reconstrucciones.
+      if (!_lost && now - _lastDetectionMs > _lostGraceMs) {
+        _lost = true;
+        _resetFilters();
+        controller.add(const TrackingFrame.lost());
+      }
+      return;
+    }
+
+    _lost = false;
+    _lastDetectionMs = now;
+
+    final s = _smooth(anchor, now / 1000.0);
+
+    controller.add(TrackingFrame(
+      anchor: s,
+      landmarks: detection.landmarks,
+    ));
   }
 
   AnchorPose _smooth(AnchorPose anchor, double tSeconds) {
@@ -388,10 +444,11 @@ class TrackingRepositoryImpl implements TrackingRepository {
   /// La detección de manos en Android tiene que correr en el isolate raíz:
   /// su plugin publica los resultados por un `EventChannel`, y Flutter no
   /// permite recibir mensajes del host en un isolate secundario. Ya no bloquea,
-  /// así que tampoco necesita aislamiento. El resto sigue en el isolate
-  /// dedicado del spike B5.
+  /// así que tampoco necesita aislamiento. La cabeza para aretes en Android
+  /// tampoco bloquea y va igual (ver [runsInRootIsolate]). El resto sigue en
+  /// el isolate dedicado del spike B5.
   DetectionRunner _runnerFor(DetectorKind kind) =>
-      requiresRootIsolate(kind) ? InlineDetectionRunner() : DetectionIsolate();
+      runsInRootIsolate(kind) ? InlineDetectionRunner() : DetectionIsolate();
 
   CameraLensDirection _lensFor(JewelryCategory category) =>
       category == JewelryCategory.bracelet
@@ -400,6 +457,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
 
   @override
   Future<void> stop() async {
+    await _results?.cancel();
+    _results = null;
+    _aspect = null;
     await cameraService.dispose();
     await _activeRunner?.dispose();
     _activeRunner = null;

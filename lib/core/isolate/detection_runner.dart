@@ -33,6 +33,11 @@ abstract interface class DetectionRunner {
   /// Entrega un frame y devuelve lo detectado disponible.
   Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation);
 
+  /// Si el detector publica sus resultados por su cuenta ([PushesResults]),
+  /// el stream por el que llegan; entonces [detect] solo entrega el frame.
+  /// `null` con los detectores de petición y respuesta.
+  Stream<LandmarkFrame>? get results;
+
   Future<void> dispose();
 }
 
@@ -75,9 +80,19 @@ LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
 bool requiresRootIsolate(DetectorKind kind) =>
     kind == DetectorKind.hand && Platform.isAndroid;
 
+/// `true` si el detector de [kind] corre en el isolate raíz.
+///
+/// Las manos en Android tienen que ir ahí ([requiresRootIsolate]). La cabeza
+/// para aretes en Android no lo necesita pero le conviene: `NeckTracker`
+/// recibe el frame y responde enseguida, sin bloquear, y en el isolate
+/// dedicado cada frame (~0,5 MB) se copiaba una vez más y daba dos saltos de
+/// isolate de ida y vuelta.
+bool runsInRootIsolate(DetectorKind kind) =>
+    requiresRootIsolate(kind) || usesHeadMesh(kind);
+
 /// Ejecuta el detector en el isolate que lo crea, sin aislamiento.
 ///
-/// Solo es aceptable para detectores que no bloquean: ver [requiresRootIsolate].
+/// Solo es aceptable para detectores que no bloquean: ver [runsInRootIsolate].
 class InlineDetectionRunner implements DetectionRunner {
   LandmarkDetector? _detector;
 
@@ -87,6 +102,12 @@ class InlineDetectionRunner implements DetectionRunner {
     await detector.initialize();
     _detector = detector;
   }
+
+  @override
+  Stream<LandmarkFrame>? get results => switch (_detector) {
+        final PushesResults d => d.results,
+        _ => null,
+      };
 
   @override
   Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation) async {

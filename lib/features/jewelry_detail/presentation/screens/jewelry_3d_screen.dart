@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
 import '../../../../core/assets/resolved_model_asset.dart';
+import '../../../../core/widgets/current_route_only.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
 
@@ -84,21 +85,23 @@ class _Jewelry3dScreenState
                           color: Color(0xFFD2AE6C),
                         ),
                       ),
-                      data: (src) => ModelViewer(
-                        key: ValueKey(
-                          '$_viewerVersion-$src',
+                      data: (src) => CurrentRouteOnly(
+                        child: ModelViewer(
+                          key: ValueKey(
+                            '$_viewerVersion-$src',
+                          ),
+                          src: src,
+                          alt: piece.nombre,
+                          orientation: piece.orientacionYawDeg == 0
+                              ? null
+                              : '0deg 0deg ${piece.orientacionYawDeg}deg',
+                          ar: false,
+                          autoRotate: false,
+                          cameraControls: true,
+                          disableZoom: false,
+                          backgroundColor:
+                              const Color(0xFF0E0C09),
                         ),
-                        src: src,
-                        alt: piece.nombre,
-                        orientation: piece.orientacionYawDeg == 0
-                            ? null
-                            : '0deg 0deg ${piece.orientacionYawDeg}deg',
-                        ar: false,
-                        autoRotate: false,
-                        cameraControls: true,
-                        disableZoom: false,
-                        backgroundColor:
-                            const Color(0xFF0E0C09),
                       ),
                     ),
               ),

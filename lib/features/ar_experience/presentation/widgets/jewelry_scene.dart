@@ -316,6 +316,17 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// Alto supuesto de un arete cuando el catálogo no trae `alto`.
   static const double _defaultEarringMm = 20;
 
+  /// Con aretes, si algo cambió desde el último dibujo (ver [_dibujar]).
+  bool _sucio = true;
+
+  /// Reloj de [_dibujar].
+  final Stopwatch _reloj = Stopwatch()..start();
+  int _ultimoDibujoMs = 0;
+
+  /// Con aretes, cada cuánto se dibuja aunque no se haya marcado ningún
+  /// cambio: red de seguridad para lo que cambie la escena por otro camino
+  /// (texturas o el entorno que terminan de cargar).
+  static const int _dibujoMinimoMs = 250;
 
   void _createViewer(Size area) {
     _area = area;
@@ -348,6 +359,7 @@ class _JewelrySceneState extends State<JewelryScene> {
   Future<void> _setup() async {
     final viewer = _viewer!;
     viewer.scene = three.Scene();
+    viewer.customRenderer = (scene, camera, texture, [dt]) => _dibujar(dt);
 
     // Reflejos PBR de estudio, manteniendo transparente el fondo AR.
     var hasEnvironment = false;
@@ -868,6 +880,29 @@ class _JewelrySceneState extends State<JewelryScene> {
     head.add(mesh);
   }
 
+  /// Dibuja la escena en cada vsync, salvo con aretes: ahí solo cuando algo
+  /// cambió.
+  ///
+  /// `three_js` redibuja la escena entera en cada vsync, en el isolate
+  /// principal, aunque no se haya movido nada. Con un arete de botón la escena
+  /// solo cambia cuando llega una pose nueva (10–30 por segundo) o con el
+  /// péndulo de los que cuelgan, que marca cada paso. Los dibujos de sobra le
+  /// quitaban CPU y GPU a la cámara y a la malla facial, que son las que
+  /// marcan lo rápido que el arete sigue a la cabeza.
+  Future<void> _dibujar(double? dt) async {
+    final viewer = _viewer;
+    if (viewer == null) return;
+    final ahora = _reloj.elapsedMilliseconds;
+    if (widget.earring != null &&
+        !_sucio &&
+        ahora - _ultimoDibujoMs < _dibujoMinimoMs) {
+      return;
+    }
+    _sucio = false;
+    _ultimoDibujoMs = ahora;
+    await viewer.render(viewer.scene, viewer.camera, null, dt);
+  }
+
   /// Sitúa y orienta la cabeza para la pose actual (la posición del grupo
   /// exterior ya la puso `_applyAnchor`).
   void _applyHeadAnchor(
@@ -1051,6 +1086,7 @@ class _JewelrySceneState extends State<JewelryScene> {
       var frente = normal - abajo * normal.dot(abajo);
       if (frente.length < 1e-6) frente = const Vec3(0, 0, 1);
 
+      _sucio = true;
       ear.orient.quaternion.setFrom(_basisRotation(
         fromY: medida.up,
         fromZ: medida.front,
@@ -1186,6 +1222,7 @@ class _JewelrySceneState extends State<JewelryScene> {
   /// que su tamaño en pantalla sale de la geometría; sin ella se cae al
   /// comportamiento anterior, con el tamaño pedido en píxeles.
   void _applyAnchor() {
+    _sucio = true;
     final jewel = _jewel;
     final area = _area;
     final anchor = widget.anchor;

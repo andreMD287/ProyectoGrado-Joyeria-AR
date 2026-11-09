@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.google.mediapipe.framework.image.BitmapImageBuilder
@@ -15,6 +17,7 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
 import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter
 import io.flutter.FlutterInjector
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -59,9 +62,16 @@ import kotlin.math.sqrt
  * **Modo cabeza, para aretes** (`start` con `mode: "head"`). Usa la misma malla
  * facial pero no segmenta: entrega más puntos de la cara ([HEAD_POINTS]) y la
  * matriz de transformación facial, de la que Dart saca la rotación de la
- * cabeza para colgar los aretes y su oclusión.
+ * cabeza para colgar los aretes y su oclusión. Cada resultado se publica por
+ * el `EventChannel` `jewelry_ar/head_results` apenas está, en vez de esperar
+ * al siguiente `process` (ver `PushesResults` en Dart).
+ *
+ * La malla se queda en CPU también para aretes. En la GPU, sin segmentación
+ * compartiéndola, tardó 120–130 ms por frame contra ~50 en CPU, y la cabeza
+ * bajó de ~15 a ~7 actualizaciones por segundo (Galaxy A15, 2026-11-08).
  */
-class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandler {
+class NeckTracker(private val context: Context) :
+    MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
     companion object {
         private const val TAG = "NeckTracker"
         // Assets de Flutter (`assets/mediapipe/`), compartidos con iOS. Dentro
@@ -88,6 +98,9 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
             234, 454, 10, 152, 1, 2, 33, 263, 93, 323, 132, 361, 58, 288,
         )
 
+        /** Lado de las teselas de la conversión a ARGB, en píxeles (par). */
+        private const val TILE = 32
+
         /** Ancho al que se reduce el frame para segmentar: el modelo es de 256. */
         private const val SEG_WIDTH = 240
 
@@ -110,6 +123,10 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
     private val segCpuExec = Executors.newSingleThreadExecutor { r -> Thread(r, "neck-seg-cpu") }
 
     private var face: FaceLandmarker? = null
+
+    /** Por donde se publican los resultados del modo cabeza. */
+    @Volatile private var sink: EventChannel.EventSink? = null
+    private val main = Handler(Looper.getMainLooper())
     private var segmenter: ImageSegmenter? = null
     private var cpuSegmenter: ImageSegmenter? = null
     @Volatile private var gpuReady = false
@@ -127,6 +144,14 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
     init {
         faceExec.execute { ensureFace() }
         segExec.execute { ensureGpuSegmenter() }
+    }
+
+    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        sink = events
+    }
+
+    override fun onCancel(arguments: Any?) {
+        sink = null
     }
 
     @Volatile private var active = false
@@ -178,6 +203,11 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
                 }
                 synchronized(pendingLock) { pending = Frame(bytes, w, h, stride, rotation) }
                 if (faceBusy.compareAndSet(false, true)) faceExec.execute { drain() }
+                // Con aretes el resultado sale por el `EventChannel`.
+                if (headMode && sink != null) {
+                    result.success(null)
+                    return
+                }
                 val out = latest
                 val fresh = SystemClock.uptimeMillis() - latestAt < RESULT_MAX_AGE_MS
                 result.success(if (out != null && fresh) out else null)
@@ -287,8 +317,12 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
             }
             if (out != null && active) {
                 seq++
-                latest = out + ("seq" to seq)
+                val withSeq = out + ("seq" to seq)
+                latest = withSeq
                 latestAt = SystemClock.uptimeMillis()
+                if (headMode) {
+                    main.post { if (active && headMode) sink?.success(withSeq) }
+                }
             }
         }
     }
@@ -477,38 +511,91 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         }
     }
 
+    // Búferes de la conversión, reutilizados entre frames (solo en [faceExec]).
+    private var pixels: IntArray? = null
+    private var upright: Bitmap? = null
+
     /**
      * NV21 a ARGB, rotado a vertical en la misma pasada. Coeficientes BT.601 de
      * rango limitado en aritmética entera (×1024).
+     *
+     * Se recorre por bloques de 2×2, que comparten su par de croma, y por
+     * teselas de [TILE]: con la rotación de la cámara frontal (270°) cada fila
+     * de la imagen se escribe como una columna, y escribir fila tras fila
+     * saltaba de línea de caché en cada píxel. El destino es lineal en (x, y)
+     * para cualquier rotación, `base + x·dx + y·dy`. El píxel y el mapa de bits
+     * se reutilizan: antes se creaban dos búferes de ~1,4 MB por frame.
+     * Medido en el Galaxy A15 (2026-11-08): de 26–30 ms por frame, la mitad
+     * del tiempo de cada detección sin cara a la vista, a 10–13 ms.
+     *
+     * Las dimensiones de la cámara son pares; con una impar, la última fila o
+     * columna quedaría sin convertir.
      */
     private fun toUprightBitmap(nv: ByteArray, w: Int, h: Int, stride: Int, rotation: Int): Bitmap {
         val r = ((rotation % 360) + 360) % 360
         val swapped = r == 90 || r == 270
         val ow = if (swapped) h else w
         val oh = if (swapped) w else h
-        val px = IntArray(ow * oh)
-        val uvStart = stride * h
-        for (y in 0 until h) {
-            val yRow = y * stride
-            val uvRow = uvStart + (y shr 1) * stride
-            for (x in 0 until w) {
-                val yy = max(0, (nv[yRow + x].toInt() and 0xFF) - 16) * 1192
-                val i = uvRow + (x and 1.inv())
-                val v = (nv[i].toInt() and 0xFF) - 128
-                val u = (nv[i + 1].toInt() and 0xFF) - 128
-                val rr = ((yy + 1634 * v) shr 10).coerceIn(0, 255)
-                val gg = ((yy - 833 * v - 400 * u) shr 10).coerceIn(0, 255)
-                val bb = ((yy + 2066 * u) shr 10).coerceIn(0, 255)
-                val dst = when (r) {
-                    90 -> x * ow + (ow - 1 - y)
-                    180 -> (oh - 1 - y) * ow + (ow - 1 - x)
-                    270 -> (w - 1 - x) * ow + y
-                    else -> y * ow + x
-                }
-                px[dst] = -0x1000000 or (rr shl 16) or (gg shl 8) or bb
-            }
+        val base: Int
+        val dx: Int
+        val dy: Int
+        when (r) {
+            90 -> { base = ow - 1; dx = ow; dy = -1 }
+            180 -> { base = (oh - 1) * ow + ow - 1; dx = -1; dy = -ow }
+            270 -> { base = (w - 1) * ow; dx = -ow; dy = 1 }
+            else -> { base = 0; dx = 1; dy = ow }
         }
-        return Bitmap.createBitmap(px, ow, oh, Bitmap.Config.ARGB_8888)
+        val px = pixels?.takeIf { it.size == ow * oh } ?: IntArray(ow * oh).also { pixels = it }
+        val uvStart = stride * h
+        val ew = w and 1.inv()
+        val eh = h and 1.inv()
+        var ty = 0
+        while (ty < eh) {
+            val yEnd = minOf(ty + TILE, eh)
+            var tx = 0
+            while (tx < ew) {
+                val xEnd = minOf(tx + TILE, ew)
+                var y = ty
+                while (y < yEnd) {
+                    val row0 = y * stride
+                    val row1 = row0 + stride
+                    val uvRow = uvStart + (y shr 1) * stride
+                    var x = tx
+                    while (x < xEnd) {
+                        val v = (nv[uvRow + x].toInt() and 0xFF) - 128
+                        val u = (nv[uvRow + x + 1].toInt() and 0xFF) - 128
+                        val rv = 1634 * v
+                        val guv = -833 * v - 400 * u
+                        val bu = 2066 * u
+                        val d = base + x * dx + y * dy
+                        px[d] = argb(nv[row0 + x], rv, guv, bu)
+                        px[d + dx] = argb(nv[row0 + x + 1], rv, guv, bu)
+                        px[d + dy] = argb(nv[row1 + x], rv, guv, bu)
+                        px[d + dx + dy] = argb(nv[row1 + x + 1], rv, guv, bu)
+                        x += 2
+                    }
+                    y += 2
+                }
+                tx = xEnd
+            }
+            ty = yEnd
+        }
+        val bmp = upright?.takeIf { it.width == ow && it.height == oh && !it.isRecycled }
+            ?: Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888).also { upright = it }
+        bmp.setPixels(px, 0, ow, 0, 0, ow, oh)
+        return bmp
+    }
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun argb(luma: Byte, rv: Int, guv: Int, bu: Int): Int {
+        val yy = max(0, (luma.toInt() and 0xFF) - 16) * 1192
+        var rr = (yy + rv) shr 10
+        if (rr < 0) rr = 0 else if (rr > 255) rr = 255
+        var gg = (yy + guv) shr 10
+        if (gg < 0) gg = 0 else if (gg > 255) gg = 255
+        var bb = (yy + bu) shr 10
+        if (bb < 0) bb = 0 else if (bb > 255) bb = 255
+        return -0x1000000 or (rr shl 16) or (gg shl 8) or bb
     }
 
     /**
