@@ -189,6 +189,33 @@ class EarringStrategy implements TrackingStrategy {
     final cara = axes.z;
     final yaw = math.atan2(cara.x, cara.z);
 
+    // Cada lóbulo, en el espacio de la cabeza, sobre el contorno medido de su
+    // lado (ver `HeadModel.lobeAlongContour`), corregido por el cabeceo
+    // (`HeadModel.lobePitchGain`): positivo mirando hacia abajo.
+    final origen = (escena(neg) + escena(pos)) * 0.5;
+    final pitch = math.atan2(-cara.y, math.sqrt(cara.x * cara.x + cara.z * cara.z));
+    final porCabeceo = Vec3(0, HeadModel.lobePitchGain * pitch, 0);
+    // Con la cabeza girada el contorno se ubica peor y se pasa poco a poco al
+    // lóbulo atado a las mejillas (ver `HeadModel.rigidLobeBlendStartDeg`).
+    final hacia = _smoothstep(
+      HeadModel.rigidLobeBlendStartDeg * math.pi / 180,
+      HeadModel.rigidLobeBlendEndDeg * math.pi / 180,
+      yaw.abs(),
+    );
+    Vec3 lobulo(int side) {
+      final rigido = HeadModel.lobeFor(side) + porCabeceo;
+      final contorno = head.contourFor(side);
+      if (contorno == null || hacia >= 1) return rigido;
+      final (arriba, abajo) = contorno;
+      final a = escena(arriba), b = escena(abajo);
+      final punto = a + (b - a) * HeadModel.lobeAlongContour;
+      final d = (punto - origen) * (1 / ancho);
+      final sobreContorno = Vec3(d.dot(axes.x), d.dot(axes.y), d.dot(axes.z)) +
+          HeadModel.lobeOffsetFor(side) +
+          porCabeceo;
+      return sobreContorno + (rigido - sobreContorno) * hacia;
+    }
+
     final forced = _forcedSide;
     return AnchorPose(
       position: Vec3(
@@ -204,6 +231,8 @@ class EarringStrategy implements TrackingStrategy {
           ? null
           // 0 = izquierda, 1 = derecha, de la persona.
           : (forced == 0 ? head.leftEarSide : -head.leftEarSide),
+      lobeNegative: lobulo(-1),
+      lobePositive: lobulo(1),
       confidence: 1,
     );
   }
@@ -241,6 +270,13 @@ class EarringStrategy implements TrackingStrategy {
   /// Coseno mínimo entre el eje x de la matriz y la línea de mejilla a
   /// mejilla (unos 45°).
   static const double _minMatrixAgreement = 0.7;
+
+  /// 0 hasta [a], 1 desde [b] y una curva suave entre los dos: el lóbulo no
+  /// salta al pasar de un cálculo al otro.
+  static double _smoothstep(double a, double b, double v) {
+    final t = ((v - a) / (b - a)).clamp(0.0, 1.0);
+    return t * t * (3 - 2 * t);
+  }
 
   /// `headEulerAngleY` (giro lateral de cabeza) a radianes, para que el arete
   /// gire con la cabeza en vez de quedarse plano.

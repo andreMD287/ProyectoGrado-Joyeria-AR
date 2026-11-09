@@ -16,6 +16,13 @@ class HeadObservation {
   static const int forehead = 10;
   static const int chin = 152;
 
+  /// Contorno de la mandíbula bajo cada oreja, de arriba abajo: el lóbulo
+  /// queda entre estos dos puntos (ver `HeadModel.lobeAlongContour`).
+  static const int rightUpperContour = 93;
+  static const int rightLowerContour = 132;
+  static const int leftUpperContour = 323;
+  static const int leftLowerContour = 361;
+
   /// Puntos de la malla por su índice de MediaPipe. La `z` es la profundidad
   /// relativa de la malla, en la escala de `x`, y crece al alejarse.
   final Map<int, Landmark> points;
@@ -48,4 +55,16 @@ class HeadObservation {
   /// Mejilla en el lado local +x.
   Landmark? get positiveSide =>
       points[mirrored ? rightFaceSide : leftFaceSide];
+
+  /// Los dos puntos del contorno bajo la oreja del lado local [side] (+1 o
+  /// -1), de arriba abajo, o `null` si falta alguno.
+  (Landmark, Landmark)? contourFor(int side) {
+    // El lado -x es la izquierda de la persona con espejo, la derecha sin él.
+    final izquierda = (side < 0) == mirrored;
+    final arriba =
+        points[izquierda ? leftUpperContour : rightUpperContour];
+    final abajo = points[izquierda ? leftLowerContour : rightLowerContour];
+    if (arriba == null || abajo == null) return null;
+    return (arriba, abajo);
+  }
 }

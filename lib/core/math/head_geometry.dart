@@ -115,7 +115,68 @@ abstract final class HeadModel {
   ///   de la oreja, y el botón se fue ~12 mm atrás. De lado, los puntos caen
   ///   en el borde delantero de la oreja, a la altura del trago: la
   ///   perforación queda prácticamente a su misma profundidad.
-  static const Vec3 lobe = Vec3(0.50, -0.19, 0.0);
+  /// - Medido contra la perforación real y no contra lo alto de la argolla
+  ///   (que asoma ~7 mm más abajo), el botón de la captura girada a 39°
+  ///   quedaba ~7 mm bajo: y = -0,14.
+  ///
+  /// De frente se usa el lóbulo sobre el contorno ([lobeAlongContour]); con
+  /// la cabeza girada se pasa a este (ver [rigidLobeBlendStartDeg]).
+  static const Vec3 lobe = Vec3(0.50, -0.14, 0.0);
+
+  /// Giro de la cabeza a partir del cual el lóbulo deja de seguir el
+  /// contorno de la mandíbula y pasa a [lobe], hasta seguirlo del todo en
+  /// [rigidLobeBlendEndDeg].
+  ///
+  /// **Medido en dispositivo** (2026-11-08): sobre el contorno, el botón
+  /// quedaba en su sitio de frente, ~2 mm hacia la nuca a 33° y ~7 mm a
+  /// 44–45°. Con la cabeza muy girada esos puntos quedan cerca del borde de
+  /// la cara y MediaPipe los ubica peor. [lobe], atado a las mejillas,
+  /// acertaba de lado a 39°.
+  static const double rigidLobeBlendStartDeg = 25;
+  static const double rigidLobeBlendEndDeg = 45;
+
+  /// Dónde cae el lóbulo entre los dos puntos del contorno de la mandíbula
+  /// bajo la oreja (93→132 o 323→361), como fracción del camino.
+  ///
+  /// **Medido en dispositivo** (2026-11-08): con el lóbulo fijo respecto a
+  /// las mejillas acertaba en unas poses y en otras quedaba ~8 mm bajo,
+  /// porque la altura dependía de la inclinación que diera la matriz. En las
+  /// dos capturas donde acertaba, de frente y girado 39°, el lóbulo caía al
+  /// 68 % y al 65 % del camino entre esos puntos: atarlo a ellos sigue la
+  /// cara de cada persona y cada pose.
+  static const double lobeAlongContour = 0.67;
+
+  /// Desplazamiento del lóbulo desde ese punto del contorno, en el espacio de
+  /// la cabeza, con x hacia afuera de la cara. Medido en dispositivo
+  /// (2026-11-08):
+  ///
+  /// - **x:** de frente, ~2 % del ancho de cara hacia afuera.
+  /// - **y:** con la corrección por cabeceo el error vertical ya no depende
+  ///   del cabeceo, pero queda un corrimiento fijo. Se midió primero contra
+  ///   lo alto de la argolla real que asoma bajo el lóbulo, y eso engañaba:
+  ///   la argolla sube por dentro del lóbulo y la perforación queda ~7 mm
+  ///   más arriba (marcada por la persona sobre la captura). Contra la
+  ///   perforación, en cuatro poses el botón quedaba entre ~3 y ~7 mm bajo
+  ///   sin este ajuste: ~3 % del ancho de cara hacia arriba.
+  /// - **z:** se partió de ~6 % hacia atrás; girado, el botón quedaba hacia
+  ///   la nuca, y más cuanto más girado (~2 mm a 33°, ~8 mm a 44°). Sin
+  ///   desplazamiento atrás queda el mejor compromiso.
+  static const Vec3 lobeFromContour = Vec3(0.021, 0.03, 0.0);
+
+  /// Cuánto sube el lóbulo respecto al contorno por cada radián de cabeceo
+  /// hacia abajo, en anchos de cara.
+  ///
+  /// **Medido en dispositivo** (2026-11-08, cabeza girada ~35°): mirando
+  /// hacia abajo (+18°) el botón quedaba ~7 mm bajo la perforación, y
+  /// mirando hacia arriba (-18°) ~5 mm encima; nivelado, en su sitio. Los
+  /// puntos del contorno de la mandíbula se deslizan sobre la cara con el
+  /// cabeceo, más de lo que se mueve el lóbulo, que está detrás. Ajuste
+  /// lineal a esas dos medidas.
+  static const double lobePitchGain = 0.155;
+
+  /// [lobeFromContour] para el lado [side] (+1 o -1 en x).
+  static Vec3 lobeOffsetFor(int side) =>
+      Vec3(side * lobeFromContour.x, lobeFromContour.y, lobeFromContour.z);
 
   /// Campo de visión vertical que supone MediaPipe para el frame que recibe
   /// (el entorno por defecto de su geometría facial). La rotación de la

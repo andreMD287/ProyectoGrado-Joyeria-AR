@@ -95,6 +95,12 @@ class AnchorPose {
   /// dos si es `null`.
   final int? earringSide;
 
+  /// Con [headAxes], dónde está cada lóbulo en el espacio de la cabeza (ver
+  /// `HeadModel`), estimado en este frame: el del lado local -x y el del +x.
+  /// `null` sin [headAxes]; entonces se usa el lóbulo fijo del modelo.
+  final Vec3? lobeNegative;
+  final Vec3? lobePositive;
+
   final double confidence;
 
   const AnchorPose({
@@ -109,6 +115,11 @@ class AnchorPose {
     this.limbWidth,
     this.headAxes,
     this.earringSide,
+    this.lobeNegative,
+    this.lobePositive,
     this.confidence = 1,
   });
+
+  /// El lóbulo del lado local [side] (+1 o -1), si se midió.
+  Vec3? lobeFor(int side) => side < 0 ? lobeNegative : lobePositive;
 }

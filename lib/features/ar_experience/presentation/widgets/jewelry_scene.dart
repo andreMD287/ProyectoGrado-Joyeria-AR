@@ -729,13 +729,18 @@ class _JewelrySceneState extends State<JewelryScene> {
       final lobulo = HeadModel.lobeFor(side);
       final normal = HeadModel.earNormal(side);
 
+      // El grupo del lóbulo se mueve en cada pose al lóbulo medido (ver
+      // `_applyHeadAnchor`); el disco y el arete van dentro.
+      final enLobulo = three.Object3D()
+        ..position.setValues(lobulo.x, lobulo.y, lobulo.z);
+      head.add(enLobulo);
+
       // Disco del lóbulo: su eje (el +y del cilindro) va por la normal de la
       // cara externa, y esa cara queda en el punto de perforación.
-      final disco = lobulo +
-          const Vec3(0, HeadModel.lobeDiscRaise, 0) -
+      final disco = const Vec3(0, HeadModel.lobeDiscRaise, 0) -
           normal * (HeadModel.lobeDiscThickness / 2);
       _addHeadOccluder(
-        head,
+        enLobulo,
         three.CylinderGeometry(
           HeadModel.lobeDiscRadius,
           HeadModel.lobeDiscRadius,
@@ -766,10 +771,7 @@ class _JewelrySceneState extends State<JewelryScene> {
         ..scale.setValues(k, k, k)
         ..add(centrado);
       final orientado = three.Object3D()..add(escalado);
-      final enLobulo = three.Object3D()
-        ..position.setValues(lobulo.x, lobulo.y, lobulo.z)
-        ..add(orientado);
-      head.add(enLobulo);
+      enLobulo.add(orientado);
 
       // Un botón va fijo al lóbulo: el adorno mira hacia afuera de la oreja
       // y la aguja entra por la cara externa del lóbulo.
@@ -830,8 +832,8 @@ class _JewelrySceneState extends State<JewelryScene> {
     return girar(Vec3(p.x, p.y, p.z));
   }
 
-  /// Añade a la cabeza un sólido que solo escribe profundidad, con su
-  /// silueta de diagnóstico.
+  /// Añade a [head] (la cabeza o el grupo de un lóbulo) un sólido que solo
+  /// escribe profundidad, con su silueta de diagnóstico.
   void _addHeadOccluder(
     three.Object3D head,
     three.BufferGeometry geometry, {
@@ -897,9 +899,20 @@ class _JewelrySceneState extends State<JewelryScene> {
     final lado = anchor.earringSide;
     for (final ear in _ears) {
       ear.holder.visible = lado == null || lado == ear.side;
+      // El lóbulo medido en este frame, o el fijo del modelo si no se midió.
+      final lobulo = anchor.lobeFor(ear.side) ?? HeadModel.lobeFor(ear.side);
+      ear.holder.position.setValues(lobulo.x, lobulo.y, lobulo.z);
       final recorte = ear.clip;
       if (recorte != null) {
-        _ubicarRecorte(recorte, ear.side, head, jewel, anchoWorld, compresion);
+        _ubicarRecorte(
+          recorte,
+          ear.side,
+          lobulo,
+          head,
+          jewel,
+          anchoWorld,
+          compresion,
+        );
       }
     }
   }
@@ -919,13 +932,14 @@ class _JewelrySceneState extends State<JewelryScene> {
   static void _ubicarRecorte(
     three.Plane recorte,
     int side,
+    Vec3 lobulo,
     three.Object3D head,
     three.Object3D grupo,
     double anchoWorld,
     double compresion,
   ) {
     final n = HeadModel.earNormal(side);
-    final l = HeadModel.lobeFor(side) - n * _clipInset;
+    final l = lobulo - n * _clipInset;
     final punto = three.Vector3(l.x, l.y, l.z)
       ..scale(anchoWorld)
       ..applyQuaternion(head.quaternion);

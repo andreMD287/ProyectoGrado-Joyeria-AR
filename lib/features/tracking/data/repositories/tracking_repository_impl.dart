@@ -174,6 +174,12 @@ class TrackingRepositoryImpl implements TrackingRepository {
   LandmarkStabilizer? _headXStabilizer;
   LandmarkStabilizer? _headYStabilizer;
 
+  /// Lóbulos de los aretes en el espacio de la cabeza. Salen de puntos del
+  /// contorno, más ruidosos que la pose; respecto a la cabeza apenas se
+  /// mueven, así que se filtran fuerte.
+  LandmarkStabilizer? _lobeNegStabilizer;
+  LandmarkStabilizer? _lobePosStabilizer;
+
   @override
   Stream<TrackingFrame> trackingStream(JewelryCategory category) {
     final strategy = strategies[category];
@@ -223,6 +229,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
         _limbWidthStabilizer = ScalarStabilizer(minCutoff: 0.5, beta: 0.1);
         _headXStabilizer = OneEuroStabilizer(minCutoff: 1.0, beta: 1.5);
         _headYStabilizer = OneEuroStabilizer(minCutoff: 1.0, beta: 1.5);
+        _lobeNegStabilizer = OneEuroStabilizer(minCutoff: 0.6, beta: 0.5);
+        _lobePosStabilizer = OneEuroStabilizer(minCutoff: 0.6, beta: 0.5);
         _lost = true;
         _lastDetectionMs = 0;
         final runner = _runnerFor(strategy.detectorKind);
@@ -333,9 +341,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
               ) ??
               head,
       earringSide: anchor.earringSide,
+      lobeNegative: _filtrar(_lobeNegStabilizer, anchor.lobeNegative, tSeconds),
+      lobePositive: _filtrar(_lobePosStabilizer, anchor.lobePositive, tSeconds),
       confidence: anchor.confidence,
     );
   }
+
+  static Vec3? _filtrar(LandmarkStabilizer? filtro, Vec3? v, double t) =>
+      v == null ? null : filtro?.filter(v, t) ?? v;
 
   static Vec3 _normalize(Vec3 v) {
     final largo = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
@@ -355,6 +368,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _yawStabilizer?.reset();
     _headXStabilizer?.reset();
     _headYStabilizer?.reset();
+    _lobeNegStabilizer?.reset();
+    _lobePosStabilizer?.reset();
   }
 
   /// Relación ancho/alto del frame **ya rotado a vertical**, que es el marco en
@@ -397,6 +412,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _yawStabilizer = null;
     _headXStabilizer = null;
     _headYStabilizer = null;
+    _lobeNegStabilizer = null;
+    _lobePosStabilizer = null;
     stabilizer.reset();
     _lost = true;
     final controller = _controller;

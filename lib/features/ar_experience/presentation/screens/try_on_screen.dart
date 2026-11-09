@@ -1251,6 +1251,18 @@ class _LandmarkDebugLayer extends StatelessWidget {
         ..write(
           'yaw ${a.yawRadians == null ? "-" : (a.yawRadians! * 180 / math.pi).toStringAsFixed(1)}deg',
         );
+      // Aretes con la malla facial: cabeceo de la cabeza, positivo mirando
+      // hacia abajo. El lóbulo está más atrás que el contorno de la cara, así
+      // que su altura en la imagen depende de él; sirve para calibrarlo.
+      final axes = a.headAxes;
+      if (axes != null) {
+        final cara = axes.z;
+        final pitch = math.atan2(
+          -cara.y,
+          math.sqrt(cara.x * cara.x + cara.z * cara.z),
+        );
+        buffer.write('   pitch ${(pitch * 180 / math.pi).toStringAsFixed(1)}deg');
+      }
     }
     return buffer.toString();
   }
@@ -1356,7 +1368,7 @@ class _LandmarkPainter extends CustomPainter {
         // Con la misma perspectiva que el render, para que el punto caiga
         // donde se dibuja el arete también con la cabeza girada.
         final p = headPointToImage(
-          local: HeadModel.lobeFor(side),
+          local: a.lobeFor(side) ?? HeadModel.lobeFor(side),
           origin: a.position,
           width: scale,
           axes: axes,

@@ -26,6 +26,15 @@ HeadObservation caraDeFrente({
         HeadObservation.leftFaceSide: Landmark(mirrored ? 0.4 : 0.6, 0.5, 0),
         HeadObservation.forehead: const Landmark(0.5, 0.3, -0.02),
         HeadObservation.chin: const Landmark(0.5, 0.75, -0.01),
+        // Contorno bajo cada oreja, del lado de su mejilla.
+        HeadObservation.rightUpperContour:
+            Landmark(mirrored ? 0.595 : 0.405, 0.56, 0),
+        HeadObservation.rightLowerContour:
+            Landmark(mirrored ? 0.585 : 0.415, 0.62, 0),
+        HeadObservation.leftUpperContour:
+            Landmark(mirrored ? 0.405 : 0.595, 0.56, 0),
+        HeadObservation.leftLowerContour:
+            Landmark(mirrored ? 0.415 : 0.585, 0.62, 0),
       },
       axes: axes,
       mirrored: mirrored,
@@ -145,6 +154,72 @@ void main() {
       );
       expect(derecha.x, closeTo(0.6, 1e-9));
       expect(derecha.y, closeTo(0.5, 1e-9));
+    });
+
+    test('cada lóbulo se ubica sobre el contorno medido de su lado', () {
+      final anchor = strategy.computeAnchor(
+        LandmarkFrame(head: caraDeFrente(axes: identidad)),
+        imageAspect: 0.75,
+      )!;
+      const t = HeadModel.lobeAlongContour;
+      for (final side in const [-1, 1]) {
+        // Sin el ajuste fijo, el lóbulo cae en el punto del contorno.
+        final p = headPointToImage(
+          local: anchor.lobeFor(side)! - HeadModel.lobeOffsetFor(side),
+          origin: anchor.position,
+          width: anchor.scale!,
+          axes: anchor.headAxes!,
+          aspect: 0.75,
+        );
+        final arriba = side < 0 ? 0.405 : 0.595;
+        final abajo = side < 0 ? 0.415 : 0.585;
+        expect(p.x, closeTo(arriba + (abajo - arriba) * t, 1e-9));
+        expect(p.y, closeTo(0.56 + 0.06 * t, 1e-9));
+      }
+      // El ajuste lleva cada lóbulo hacia afuera de su lado y hacia atrás.
+      expect(anchor.lobeNegative!.x, lessThan(-0.4));
+      expect(anchor.lobePositive!.x, greaterThan(0.4));
+    });
+
+    test('sin contorno de un lado, ese lóbulo es el atado a las mejillas', () {
+      final anchor = strategy.computeAnchor(
+        LandmarkFrame(
+          head: HeadObservation(
+            points: {
+              for (final e in caraDeFrente(axes: identidad).points.entries)
+                if (e.key != HeadObservation.leftLowerContour) e.key: e.value,
+            },
+            axes: identidad,
+            mirrored: true,
+          ),
+        ),
+        imageAspect: 0.75,
+      )!;
+      // De frente y nivelada no hay corrección por cabeceo.
+      final rigido = HeadModel.lobeFor(-1);
+      expect(anchor.lobeNegative!.x, closeTo(rigido.x, 1e-9));
+      expect(anchor.lobeNegative!.y, closeTo(rigido.y, 1e-9));
+      expect(anchor.lobeNegative!.z, closeTo(rigido.z, 1e-9));
+      // El otro lado sí tiene contorno y sigue sobre él, distinto del rígido.
+      expect(anchor.lobePositive!.y, isNot(closeTo(HeadModel.lobe.y, 1e-6)));
+    });
+
+    test('con la cabeza muy girada el lóbulo pasa al atado a las mejillas', () {
+      // Mejilla derecha 0,2·tan 50° más lejos: la cara gira 50°.
+      final anchor = strategy.computeAnchor(
+        LandmarkFrame(
+          head: caraDeFrente(
+            axes: headAxesFromMatrix(giroVertical(50)),
+            zDerecha: 0.2 * math.tan(50 * math.pi / 180),
+          ),
+        ),
+        imageAspect: 0.75,
+      )!;
+      // La matriz gira solo alrededor de la vertical: sin cabeceo.
+      final rigido = HeadModel.lobeFor(1);
+      expect(anchor.lobePositive!.x, closeTo(rigido.x, 1e-9));
+      expect(anchor.lobePositive!.y, closeTo(rigido.y, 1e-9));
+      expect(anchor.lobePositive!.z, closeTo(rigido.z, 1e-9));
     });
 
     test('sin mejillas no hay ancla', () {
