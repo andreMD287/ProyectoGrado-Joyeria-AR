@@ -16,6 +16,8 @@ import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
 import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter
+import io.flutter.FlutterInjector
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -45,12 +47,41 @@ import kotlin.math.sqrt
  *
  * Todo sale normalizado al frame **ya rotado a vertical y sin espejar**; el
  * espejo de la cámara frontal lo aplica Dart, como con el resto de detectores.
+ *
+ * **En tubería.** `process` deja el frame y responde enseguida con el último
+ * resultado; un hilo procesa siempre el frame más reciente y descarta los que
+ * se acumulan. Antes cada frame esperaba su respuesta antes de mandar el
+ * siguiente y la cara iba a 6–7 Hz aunque solo tarda 40–60 ms (medido en el
+ * Galaxy A15, 2026-11-05).
+ *
+ * **Modelos precargados.** Se crean al abrir la app y no se cierran al salir de
+ * la prueba virtual: el segmentador en GPU tardaba ~20 s en arrancar y, como se
+ * cerraba, la espera se repetía en cada entrada. Mientras la GPU no está lista
+ * se segmenta en CPU.
+ *
+ * **Modo cabeza, para aretes** (`start` con `mode: "head"`). Usa la misma malla
+ * facial pero no segmenta: entrega más puntos de la cara ([HEAD_POINTS]) y la
+ * matriz de transformación facial, de la que Dart saca la rotación de la
+ * cabeza para colgar los aretes y su oclusión. Cada resultado se publica por
+ * el `EventChannel` `jewelry_ar/head_results` apenas está, en vez de esperar
+ * al siguiente `process` (ver `PushesResults` en Dart).
+ *
+ * La malla se queda en CPU también para aretes. En la GPU, sin segmentación
+ * compartiéndola, tardó 120–130 ms por frame contra ~50 en CPU, y la cabeza
+ * bajó de ~15 a ~7 actualizaciones por segundo (Galaxy A15, 2026-11-08).
  */
-class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandler {
+class NeckTracker(private val context: Context) :
+    MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
     companion object {
         private const val TAG = "NeckTracker"
-        private const val FACE_MODEL = "face_landmarker.task"
-        private const val SEG_MODEL = "selfie_multiclass_256x256.tflite"
+        // Assets de Flutter (`assets/mediapipe/`), compartidos con iOS. Dentro
+        // del APK quedan bajo `flutter_assets/`; la clave la da el loader.
+        private val FACE_MODEL = flutterAsset("face_landmarker.task")
+        private val SEG_MODEL = flutterAsset("selfie_multiclass_256x256.tflite")
+
+        private fun flutterAsset(name: String): String =
+            FlutterInjector.instance().flutterLoader()
+                .getLookupKeyForAsset("assets/mediapipe/$name")
 
         // Índices de la malla facial.
         private const val CHIN = 152
@@ -59,24 +90,74 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         private const val NOSE = 1
         private val FACE_POINTS = intArrayOf(CHIN, CHEEK_LEFT, CHEEK_RIGHT, NOSE)
 
+        /**
+         * Puntos del modo cabeza, **en este orden**: tiene que coincidir con
+         * `headMeshPoints` en `head_detector_datasource.dart`.
+         */
+        private val HEAD_POINTS = intArrayOf(
+            234, 454, 10, 152, 1, 2, 33, 263, 93, 323, 132, 361, 58, 288,
+        )
+
+        /** Lado de las teselas de la conversión a ARGB, en píxeles (par). */
+        private const val TILE = 32
+
         /** Ancho al que se reduce el frame para segmentar: el modelo es de 256. */
         private const val SEG_WIDTH = 240
 
         /** Pasado este tiempo, una medida del cuello ya no describe la pose. */
         private const val NECK_MAX_AGE_MS = 1500L
+
+        /** Pasado este tiempo, el último resultado de la cara ya no se entrega. */
+        private const val RESULT_MAX_AGE_MS = 500L
     }
 
-    private val faceExec = Executors.newSingleThreadExecutor()
+    private class Frame(val nv: ByteArray, val w: Int, val h: Int, val stride: Int, val rotation: Int)
 
-    // El delegado GPU exige crear y usar el segmentador en el mismo hilo.
-    private val segExec = Executors.newSingleThreadExecutor()
-    private val main = Handler(Looper.getMainLooper())
+    private val faceExec = Executors.newSingleThreadExecutor { r -> Thread(r, "neck-face") }
+
+    // El delegado GPU exige crear y usar el segmentador en el mismo hilo. Baja
+    // prioridad: su arranque compila para la GPU y no debe trabar la app.
+    private val segExec = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "neck-seg-gpu").apply { priority = Thread.MIN_PRIORITY }
+    }
+    private val segCpuExec = Executors.newSingleThreadExecutor { r -> Thread(r, "neck-seg-cpu") }
 
     private var face: FaceLandmarker? = null
+
+    /** Por donde se publican los resultados del modo cabeza. */
+    @Volatile private var sink: EventChannel.EventSink? = null
+    private val main = Handler(Looper.getMainLooper())
     private var segmenter: ImageSegmenter? = null
+    private var cpuSegmenter: ImageSegmenter? = null
+    @Volatile private var gpuReady = false
+    @Volatile private var gpuFailed = false
     private val segBusy = AtomicBoolean(false)
 
+    // Tubería de la cara: el frame más reciente pendiente y el último resultado.
+    private val pendingLock = Any()
+    private var pending: Frame? = null
+    private val faceBusy = AtomicBoolean(false)
+    @Volatile private var latest: Map<String, Any>? = null
+    @Volatile private var latestAt = 0L
+    private var seq = 0L
+
+    init {
+        faceExec.execute { ensureFace() }
+        segExec.execute { ensureGpuSegmenter() }
+    }
+
+    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        sink = events
+    }
+
+    override fun onCancel(arguments: Any?) {
+        sink = null
+    }
+
     @Volatile private var active = false
+
+    /** Aretes: sin segmentación, con más puntos y la pose de la cabeza. */
+    @Volatile private var headMode = false
     @Volatile private var neck: Map<String, Any>? = null
     @Volatile private var neckAt = 0L
 
@@ -90,6 +171,7 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
     private var statsStart = 0L
     private var faceFrames = 0
     private var faceMsSum = 0L
+    private var convMsSum = 0L
     @Volatile private var segFrames = 0
     @Volatile private var segMsSum = 0L
     @Volatile private var segOk = 0
@@ -98,12 +180,15 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "start" -> {
+                headMode = call.argument<String>("mode") == "head"
                 active = true
                 neck = null
+                latest = null
                 accepted = null
                 candidate = null
+                // No-ops si ya se precargaron al abrir la app.
                 faceExec.execute { ensureFace() }
-                segExec.execute { ensureSegmenter() }
+                segExec.execute { ensureGpuSegmenter() }
                 result.success(null)
             }
             "process" -> {
@@ -116,28 +201,23 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
                     result.success(null)
                     return
                 }
-                faceExec.execute {
-                    val out = try {
-                        if (active) process(bytes, w, h, stride, rotation) else null
-                    } catch (e: Throwable) {
-                        Log.w(TAG, "fallo al procesar el frame", e)
-                        null
-                    }
-                    main.post { result.success(out) }
+                synchronized(pendingLock) { pending = Frame(bytes, w, h, stride, rotation) }
+                if (faceBusy.compareAndSet(false, true)) faceExec.execute { drain() }
+                // Con aretes el resultado sale por el `EventChannel`.
+                if (headMode && sink != null) {
+                    result.success(null)
+                    return
                 }
+                val out = latest
+                val fresh = SystemClock.uptimeMillis() - latestAt < RESULT_MAX_AGE_MS
+                result.success(if (out != null && fresh) out else null)
             }
             "stop" -> {
+                // Los modelos se quedan cargados para la próxima entrada.
                 active = false
                 neck = null
-                faceExec.execute {
-                    face?.close()
-                    face = null
-                    lastTs = 0
-                }
-                segExec.execute {
-                    segmenter?.close()
-                    segmenter = null
-                }
+                latest = null
+                synchronized(pendingLock) { pending = null }
                 result.success(null)
             }
             else -> result.notImplemented()
@@ -160,6 +240,10 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
                     // cada uno: más rápido y más estable.
                     .setRunningMode(RunningMode.VIDEO)
                     .setNumFaces(1)
+                    // La pose de la cabeza para los aretes. Es un ajuste de la
+                    // malla ya calculada al modelo canónico: barato, y el
+                    // landmarker es el mismo para los dos modos.
+                    .setOutputFacialTransformationMatrixes(true)
                     .build(),
             ).also { face = it }
         } catch (e: Throwable) {
@@ -168,46 +252,114 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         }
     }
 
-    private fun ensureSegmenter(): ImageSegmenter? {
-        segmenter?.let { return it }
-        for (delegate in listOf(Delegate.GPU, Delegate.CPU)) {
-            try {
-                val s = ImageSegmenter.createFromOptions(
-                    context,
-                    ImageSegmenter.ImageSegmenterOptions.builder()
-                        .setBaseOptions(
-                            BaseOptions.builder()
-                                .setModelAssetPath(SEG_MODEL)
-                                .setDelegate(delegate)
-                                .build(),
-                        )
-                        .setRunningMode(RunningMode.IMAGE)
-                        .setOutputCategoryMask(true)
-                        .setOutputConfidenceMasks(false)
+    private fun createSegmenter(delegate: Delegate): ImageSegmenter =
+        ImageSegmenter.createFromOptions(
+            context,
+            ImageSegmenter.ImageSegmenterOptions.builder()
+                .setBaseOptions(
+                    BaseOptions.builder()
+                        .setModelAssetPath(SEG_MODEL)
+                        .setDelegate(delegate)
                         .build(),
                 )
-                Log.i(TAG, "segmentador listo con delegado $delegate")
-                segmenter = s
-                return s
+                .setRunningMode(RunningMode.IMAGE)
+                .setOutputCategoryMask(true)
+                .setOutputConfidenceMasks(false)
+                .build(),
+        )
+
+    /** Solo en [segExec]. */
+    private fun ensureGpuSegmenter() {
+        if (segmenter != null || gpuFailed) return
+        val t0 = SystemClock.uptimeMillis()
+        try {
+            segmenter = createSegmenter(Delegate.GPU)
+            gpuReady = true
+            Log.i(TAG, "segmentador GPU listo en ${SystemClock.uptimeMillis() - t0} ms")
+            // Ya no hace falta el de respaldo.
+            segCpuExec.execute {
+                cpuSegmenter?.close()
+                cpuSegmenter = null
+            }
+        } catch (e: Throwable) {
+            gpuFailed = true
+            Log.w(TAG, "segmentador GPU no disponible, se usa CPU: $e")
+        }
+    }
+
+    /** Solo en [segCpuExec]. */
+    private fun ensureCpuSegmenter(): ImageSegmenter? {
+        cpuSegmenter?.let { return it }
+        return try {
+            createSegmenter(Delegate.CPU).also { cpuSegmenter = it }
+        } catch (e: Throwable) {
+            Log.e(TAG, "no se pudo crear el segmentador en CPU", e)
+            null
+        }
+    }
+
+    /** Procesa siempre el frame más reciente hasta que no quede ninguno. */
+    private fun drain() {
+        while (true) {
+            val f = synchronized(pendingLock) { pending.also { pending = null } }
+            if (f == null) {
+                faceBusy.set(false)
+                // Pudo llegar uno justo entre la lectura y soltar el turno.
+                val queda = synchronized(pendingLock) { pending != null }
+                if (queda && faceBusy.compareAndSet(false, true)) continue
+                return
+            }
+            val out = try {
+                if (active) process(f.nv, f.w, f.h, f.stride, f.rotation) else null
             } catch (e: Throwable) {
-                Log.w(TAG, "segmentador con $delegate no disponible: $e")
+                Log.w(TAG, "fallo al procesar el frame", e)
+                null
+            }
+            if (out != null && active) {
+                seq++
+                val withSeq = out + ("seq" to seq)
+                latest = withSeq
+                latestAt = SystemClock.uptimeMillis()
+                if (headMode) {
+                    main.post { if (active && headMode) sink?.success(withSeq) }
+                }
             }
         }
-        return null
     }
 
     private fun process(nv: ByteArray, w: Int, h: Int, stride: Int, rotation: Int): Map<String, Any> {
         val landmarker = ensureFace() ?: return mapOf("face" to false)
         val t0 = SystemClock.uptimeMillis()
         val frame = toUprightBitmap(nv, w, h, stride, rotation)
+        val tConv = SystemClock.uptimeMillis()
 
         var ts = SystemClock.uptimeMillis()
         if (ts <= lastTs) ts = lastTs + 1
         lastTs = ts
         val result = landmarker.detectForVideo(BitmapImageBuilder(frame).build(), ts)
         val lms = result.faceLandmarks().firstOrNull()
-        countFace(SystemClock.uptimeMillis() - t0)
+        countFace(tConv - t0, SystemClock.uptimeMillis() - tConv)
         if (lms == null) return mapOf("face" to false)
+
+        if (headMode) {
+            val head = DoubleArray(HEAD_POINTS.size * 3)
+            for ((k, i) in HEAD_POINTS.withIndex()) {
+                head[k * 3] = lms[i].x().toDouble()
+                head[k * 3 + 1] = lms[i].y().toDouble()
+                head[k * 3 + 2] = lms[i].z().toDouble()
+            }
+            val out = HashMap<String, Any>()
+            out["face"] = true
+            out["points"] = head
+            // 4×4 tal cual la da MediaPipe (por columnas); Dart extrae la
+            // rotación y comprueba la convención.
+            val matrix = result.facialTransformationMatrixes()
+                .orElse(null)?.firstOrNull()
+            if (matrix != null && matrix.size == 16) {
+                out["matrix"] = DoubleArray(16) { matrix[it].toDouble() }
+            }
+            return out
+        }
 
         val points = DoubleArray(FACE_POINTS.size * 3)
         for ((k, i) in FACE_POINTS.withIndex()) {
@@ -225,9 +377,12 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
             )
             val chinX = points[0]
             val chinY = points[1]
-            segExec.execute {
+            val gpu = gpuReady
+            val exec = if (gpu) segExec else segCpuExec
+            exec.execute {
                 try {
-                    if (active) measureNeck(small, chinX, chinY, faceWidth)
+                    val seg = if (gpu) segmenter else ensureCpuSegmenter()
+                    if (active && seg != null) measureNeck(seg, small, chinX, chinY, faceWidth)
                 } catch (e: Throwable) {
                     Log.w(TAG, "fallo al segmentar", e)
                 } finally {
@@ -257,8 +412,9 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         return sqrt(dx * dx + dy * dy + dz * dz)
     }
 
-    private fun measureNeck(small: Bitmap, chinX: Double, chinY: Double, faceWidth: Double) {
-        val seg = ensureSegmenter() ?: return
+    private fun measureNeck(
+        seg: ImageSegmenter, small: Bitmap, chinX: Double, chinY: Double, faceWidth: Double,
+    ) {
         val t0 = SystemClock.uptimeMillis()
         val result = seg.segment(BitmapImageBuilder(small).build())
         val maskImage = result.categoryMask().orElse(null) ?: return
@@ -329,60 +485,117 @@ class NeckTracker(private val context: Context) : MethodChannel.MethodCallHandle
         return false
     }
 
-    private fun countFace(ms: Long) {
+    private fun countFace(convMs: Long, ms: Long) {
         val now = SystemClock.uptimeMillis()
         if (statsStart == 0L) statsStart = now
         faceFrames++
         faceMsSum += ms
+        convMsSum += convMs
         val elapsed = now - statsStart
         if (elapsed >= 5000) {
             val seg = segFrames
             Log.i(
                 TAG,
-                "cara ${"%.1f".format(faceFrames * 1000f / elapsed)} Hz (${faceMsSum / max(1, faceFrames)} ms), " +
-                    "cuello ${"%.1f".format(seg * 1000f / elapsed)} Hz (${segMsSum / max(1, seg)} ms, $segOk validas)",
+                "cara ${"%.1f".format(faceFrames * 1000f / elapsed)} Hz " +
+                    "(${convMsSum / max(1, faceFrames)} ms conversion + ${faceMsSum / max(1, faceFrames)} ms modelo), " +
+                    "cuello ${"%.1f".format(seg * 1000f / elapsed)} Hz en ${if (gpuReady) "GPU" else "CPU"} " +
+                    "(${segMsSum / max(1, seg)} ms, $segOk validas)",
             )
             statsStart = now
             faceFrames = 0
             faceMsSum = 0
+            convMsSum = 0
             segFrames = 0
             segMsSum = 0
             segOk = 0
         }
     }
 
+    // Búferes de la conversión, reutilizados entre frames (solo en [faceExec]).
+    private var pixels: IntArray? = null
+    private var upright: Bitmap? = null
+
     /**
      * NV21 a ARGB, rotado a vertical en la misma pasada. Coeficientes BT.601 de
      * rango limitado en aritmética entera (×1024).
+     *
+     * Se recorre por bloques de 2×2, que comparten su par de croma, y por
+     * teselas de [TILE]: con la rotación de la cámara frontal (270°) cada fila
+     * de la imagen se escribe como una columna, y escribir fila tras fila
+     * saltaba de línea de caché en cada píxel. El destino es lineal en (x, y)
+     * para cualquier rotación, `base + x·dx + y·dy`. El píxel y el mapa de bits
+     * se reutilizan: antes se creaban dos búferes de ~1,4 MB por frame.
+     * Medido en el Galaxy A15 (2026-11-08): de 26–30 ms por frame, la mitad
+     * del tiempo de cada detección sin cara a la vista, a 10–13 ms.
+     *
+     * Las dimensiones de la cámara son pares; con una impar, la última fila o
+     * columna quedaría sin convertir.
      */
     private fun toUprightBitmap(nv: ByteArray, w: Int, h: Int, stride: Int, rotation: Int): Bitmap {
         val r = ((rotation % 360) + 360) % 360
         val swapped = r == 90 || r == 270
         val ow = if (swapped) h else w
         val oh = if (swapped) w else h
-        val px = IntArray(ow * oh)
-        val uvStart = stride * h
-        for (y in 0 until h) {
-            val yRow = y * stride
-            val uvRow = uvStart + (y shr 1) * stride
-            for (x in 0 until w) {
-                val yy = max(0, (nv[yRow + x].toInt() and 0xFF) - 16) * 1192
-                val i = uvRow + (x and 1.inv())
-                val v = (nv[i].toInt() and 0xFF) - 128
-                val u = (nv[i + 1].toInt() and 0xFF) - 128
-                val rr = ((yy + 1634 * v) shr 10).coerceIn(0, 255)
-                val gg = ((yy - 833 * v - 400 * u) shr 10).coerceIn(0, 255)
-                val bb = ((yy + 2066 * u) shr 10).coerceIn(0, 255)
-                val dst = when (r) {
-                    90 -> x * ow + (ow - 1 - y)
-                    180 -> (oh - 1 - y) * ow + (ow - 1 - x)
-                    270 -> (w - 1 - x) * ow + y
-                    else -> y * ow + x
-                }
-                px[dst] = -0x1000000 or (rr shl 16) or (gg shl 8) or bb
-            }
+        val base: Int
+        val dx: Int
+        val dy: Int
+        when (r) {
+            90 -> { base = ow - 1; dx = ow; dy = -1 }
+            180 -> { base = (oh - 1) * ow + ow - 1; dx = -1; dy = -ow }
+            270 -> { base = (w - 1) * ow; dx = -ow; dy = 1 }
+            else -> { base = 0; dx = 1; dy = ow }
         }
-        return Bitmap.createBitmap(px, ow, oh, Bitmap.Config.ARGB_8888)
+        val px = pixels?.takeIf { it.size == ow * oh } ?: IntArray(ow * oh).also { pixels = it }
+        val uvStart = stride * h
+        val ew = w and 1.inv()
+        val eh = h and 1.inv()
+        var ty = 0
+        while (ty < eh) {
+            val yEnd = minOf(ty + TILE, eh)
+            var tx = 0
+            while (tx < ew) {
+                val xEnd = minOf(tx + TILE, ew)
+                var y = ty
+                while (y < yEnd) {
+                    val row0 = y * stride
+                    val row1 = row0 + stride
+                    val uvRow = uvStart + (y shr 1) * stride
+                    var x = tx
+                    while (x < xEnd) {
+                        val v = (nv[uvRow + x].toInt() and 0xFF) - 128
+                        val u = (nv[uvRow + x + 1].toInt() and 0xFF) - 128
+                        val rv = 1634 * v
+                        val guv = -833 * v - 400 * u
+                        val bu = 2066 * u
+                        val d = base + x * dx + y * dy
+                        px[d] = argb(nv[row0 + x], rv, guv, bu)
+                        px[d + dx] = argb(nv[row0 + x + 1], rv, guv, bu)
+                        px[d + dy] = argb(nv[row1 + x], rv, guv, bu)
+                        px[d + dx + dy] = argb(nv[row1 + x + 1], rv, guv, bu)
+                        x += 2
+                    }
+                    y += 2
+                }
+                tx = xEnd
+            }
+            ty = yEnd
+        }
+        val bmp = upright?.takeIf { it.width == ow && it.height == oh && !it.isRecycled }
+            ?: Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888).also { upright = it }
+        bmp.setPixels(px, 0, ow, 0, 0, ow, oh)
+        return bmp
+    }
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun argb(luma: Byte, rv: Int, guv: Int, bu: Int): Int {
+        val yy = max(0, (luma.toInt() and 0xFF) - 16) * 1192
+        var rr = (yy + rv) shr 10
+        if (rr < 0) rr = 0 else if (rr > 255) rr = 255
+        var gg = (yy + guv) shr 10
+        if (gg < 0) gg = 0 else if (gg > 255) gg = 255
+        var bb = (yy + bu) shr 10
+        if (bb < 0) bb = 0 else if (bb > 255) bb = 255
+        return -0x1000000 or (rr shl 16) or (gg shl 8) or bb
     }
 
     /**

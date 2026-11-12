@@ -1,4 +1,5 @@
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/head_geometry.dart';
 
 /// Resultado agnóstico de plataforma que consume el render AR: el punto de
 /// anclaje (ya estabilizado), una orientación estimada y el tamaño aparente
@@ -84,6 +85,22 @@ class AnchorPose {
   /// `null` cuando no se pudo ver el miembro.
   final double? limbWidth;
 
+  /// Orientación de la cabeza para aretes con la malla facial (Android). Con
+  /// ella [position] es el origen de la cabeza (ver `HeadModel`) y [scale] el
+  /// ancho de la cara, y el render cuelga los aretes de la cabeza en vez de
+  /// dibujar uno suelto. `null` con cualquier otro detector.
+  final HeadAxes? headAxes;
+
+  /// Con [headAxes], qué arete se muestra: el del lado local -1 o +1, o los
+  /// dos si es `null`.
+  final int? earringSide;
+
+  /// Con [headAxes], dónde está cada lóbulo en el espacio de la cabeza (ver
+  /// `HeadModel`), estimado en este frame: el del lado local -x y el del +x.
+  /// `null` sin [headAxes]; entonces se usa el lóbulo fijo del modelo.
+  final Vec3? lobeNegative;
+  final Vec3? lobePositive;
+
   final double confidence;
 
   const AnchorPose({
@@ -96,6 +113,13 @@ class AnchorPose {
     this.palmNormal3D,
     this.metricWidth,
     this.limbWidth,
+    this.headAxes,
+    this.earringSide,
+    this.lobeNegative,
+    this.lobePositive,
     this.confidence = 1,
   });
+
+  /// El lóbulo del lado local [side] (+1 o -1), si se midió.
+  Vec3? lobeFor(int side) => side < 0 ? lobeNegative : lobePositive;
 }

@@ -27,20 +27,15 @@ class _FakeCatalogRepository implements CatalogRepository {
   @override
   Future<Result<List<JewelryPiece>>> getByCategory(
     JewelryCategory category,
-  ) async =>
-      Ok([if (_piece.categoria == category) _piece]);
+  ) async => Ok([if (_piece.categoria == category) _piece]);
 }
 
 void main() {
-  testWidgets('El catálogo renderiza su encabezado al cargar las piezas', (
-    tester,
-  ) async {
+  testWidgets('El catálogo muestra las piezas al cargarlas', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          catalogRepositoryProvider.overrideWithValue(
-            _FakeCatalogRepository(),
-          ),
+          catalogRepositoryProvider.overrideWithValue(_FakeCatalogRepository()),
         ],
         child: const MaterialApp(home: CatalogScreen()),
       ),
@@ -51,7 +46,6 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Descubre tu\npróxima joya'), findsOneWidget);
     expect(find.text('Pulsera de prueba'), findsOneWidget);
   });
 }

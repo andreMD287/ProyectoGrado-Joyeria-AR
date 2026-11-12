@@ -73,3 +73,7 @@ flutter:
     - assets/catalog/catalog.json
     - assets/environments/
     - assets/models/
+    # Modelos de MediaPipe para el cuello de los collares (NeckTracker en
+    # Android, NeckTrackingHandler en iOS). Una sola copia para las dos
+    # plataformas: cada lado los busca por su clave de asset de Flutter.
+    - assets/mediapipe/

@@ -214,7 +214,7 @@ proxy necesita; los otros dos —el eje y el giro— seguirían siendo estimacio
 | Categoría | Cámara | Oclusión hoy | Por qué |
 |---|---|---|---|
 | **Pulseras** | Trasera | ✅ Proxy de antebrazo | MediaPipe Hands da reconstrucción métrica → hay eje 3D con el que orientar el proxy |
-| **Aretes** | Frontal | ❌ Ninguna | ML Kit Face no entrega reconstrucción métrica; sin eje 3D no hay cómo orientar un proxy |
+| **Aretes** | Frontal | 🟡 Android: cabeza invisible (cráneo, cara, cuello y un disco por lóbulo), **pendiente de calibrar en dispositivo**. iOS: ninguna | En Android la malla facial de MediaPipe (`NeckTracker` en modo cabeza) da la pose 3D de la cabeza y los dos aretes cuelgan de ella (`HeadModel` en `head_geometry.dart`, `_setupHead` en `jewelry_scene.dart`). En iOS sigue ML Kit Face, sin reconstrucción métrica |
 | **Collares** | Frontal | ❌ Ninguna | Igual que aretes, con ML Kit Pose |
 
 ### 4.1. Cómo funciona, paso a paso

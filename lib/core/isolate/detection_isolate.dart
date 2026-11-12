@@ -83,6 +83,11 @@ class DetectionIsolate implements DetectionRunner {
     _sendPort = await ready.future;
   }
 
+  /// Los detectores del isolate son todos de petición y respuesta: un
+  /// `EventChannel` no se puede escuchar fuera del isolate raíz.
+  @override
+  Stream<LandmarkFrame>? get results => null;
+
   /// Envía un frame al isolate y espera lo detectado.
   @override
   Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation) {

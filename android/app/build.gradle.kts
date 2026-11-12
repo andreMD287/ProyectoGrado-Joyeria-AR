@@ -30,6 +30,12 @@ android {
         versionName = flutter.versionName
     }
 
+    // MediaPipe abre los modelos por descriptor de archivo: comprimidos dentro
+    // del APK no se pueden abrir así.
+    androidResources {
+        noCompress.addAll(listOf("tflite", "task"))
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 
 import '../../features/tracking/data/datasources/android_hand_detector.dart';
 import '../../features/tracking/data/datasources/face_detector_datasource.dart';
+import '../../features/tracking/data/datasources/head_detector_datasource.dart';
 import '../../features/tracking/data/datasources/ios_hand_detector.dart';
 import '../../features/tracking/data/datasources/landmark_detector.dart';
 import '../../features/tracking/data/datasources/neck_detector_datasource.dart';
@@ -32,6 +33,11 @@ abstract interface class DetectionRunner {
   /// Entrega un frame y devuelve lo detectado disponible.
   Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation);
 
+  /// Si el detector publica sus resultados por su cuenta ([PushesResults]),
+  /// el stream por el que llegan; entonces [detect] solo entrega el frame.
+  /// `null` con los detectores de petición y respuesta.
+  Stream<LandmarkFrame>? get results;
+
   Future<void> dispose();
 }
 
@@ -44,9 +50,15 @@ ImageFormatGroup imageFormatGroupFor(DetectorKind kind) => switch (kind) {
         Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
       DetectorKind.face ||
       DetectorKind.pose ||
-      DetectorKind.neck =>
+      DetectorKind.neck ||
+      DetectorKind.head =>
         Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
     };
+
+/// `true` si [kind] se resuelve con la malla facial de MediaPipe: aretes en
+/// Android. En iOS esos mismos aretes van con ML Kit Face, sin cambios.
+bool usesHeadMesh(DetectorKind kind) =>
+    kind == DetectorKind.head && Platform.isAndroid;
 
 /// Crea el detector que corresponde al tipo y a la plataforma.
 LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
@@ -56,6 +68,9 @@ LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
       DetectorKind.pose => PoseDetectorDataSource(),
       DetectorKind.neck =>
         Platform.isAndroid ? NeckDetectorDataSource() : PoseDetectorDataSource(),
+      DetectorKind.head => usesHeadMesh(kind)
+          ? HeadDetectorDataSource()
+          : FaceDetectorDataSource(),
     };
 
 /// `true` si el detector de [kind] tiene que correr en el isolate raíz.
@@ -65,9 +80,19 @@ LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
 bool requiresRootIsolate(DetectorKind kind) =>
     kind == DetectorKind.hand && Platform.isAndroid;
 
+/// `true` si el detector de [kind] corre en el isolate raíz.
+///
+/// Las manos en Android tienen que ir ahí ([requiresRootIsolate]). La cabeza
+/// para aretes en Android no lo necesita pero le conviene: `NeckTracker`
+/// recibe el frame y responde enseguida, sin bloquear, y en el isolate
+/// dedicado cada frame (~0,5 MB) se copiaba una vez más y daba dos saltos de
+/// isolate de ida y vuelta.
+bool runsInRootIsolate(DetectorKind kind) =>
+    requiresRootIsolate(kind) || usesHeadMesh(kind);
+
 /// Ejecuta el detector en el isolate que lo crea, sin aislamiento.
 ///
-/// Solo es aceptable para detectores que no bloquean: ver [requiresRootIsolate].
+/// Solo es aceptable para detectores que no bloquean: ver [runsInRootIsolate].
 class InlineDetectionRunner implements DetectionRunner {
   LandmarkDetector? _detector;
 
@@ -77,6 +102,12 @@ class InlineDetectionRunner implements DetectionRunner {
     await detector.initialize();
     _detector = detector;
   }
+
+  @override
+  Stream<LandmarkFrame>? get results => switch (_detector) {
+        final PushesResults d => d.results,
+        _ => null,
+      };
 
   @override
   Future<LandmarkFrame> detect(CameraImage frame, int sensorOrientation) async {
