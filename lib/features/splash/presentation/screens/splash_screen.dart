@@ -80,7 +80,7 @@ class SplashScreen extends StatelessWidget {
                       color: JoyeriaPalette.muted,
                     ),
                   ),
-                  const Spacer(flex: 2),
+                  const Spacer(flex: 1),
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -89,7 +89,7 @@ class SplashScreen extends StatelessWidget {
                       _CategoryPreview(label: 'Pulseras'),
                     ],
                   ),
-                  const Spacer(flex: 2),
+                  const Spacer(flex: 3),
                   SizedBox(
                     height: 56,
                     child: FilledButton(
@@ -124,6 +124,19 @@ class _CategoryPreview extends StatelessWidget {
   final String label;
   const _CategoryPreview({required this.label});
 
+  String get _iconAsset {
+    switch (label) {
+      case 'Collares':
+        return 'assets/jewelry_icons/collar.png';
+      case 'Aretes':
+        return 'assets/jewelry_icons/arete.png';
+      case 'Pulseras':
+        return 'assets/jewelry_icons/pulsera.png';
+      default:
+        return 'assets/jewelry_icons/collar.png';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -133,13 +146,17 @@ class _CategoryPreview extends StatelessWidget {
           height: 48,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: JoyeriaPalette.surface,
+            color: Colors.white,
             border: Border.all(color: JoyeriaPalette.stroke),
           ),
-          child: Center(
-            child: CustomPaint(
-              size: const Size(25, 25),
-              painter: _JewelryIconPainter(label),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Image.asset(
+              _iconAsset,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+              errorBuilder: (context, error, stackTrace) =>
+                  const Icon(Icons.diamond_outlined, color: Color(0xFF763D46)),
             ),
           ),
         ),
@@ -153,55 +170,8 @@ class _CategoryPreview extends StatelessWidget {
   }
 }
 
-/// Iconos lineales para las tres categorias reales de joyas.
-class _JewelryIconPainter extends CustomPainter {
-  final String category;
-  const _JewelryIconPainter(this.category);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.scale(size.width / 28, size.height / 28);
-    final line = Paint()
-      ..color = JoyeriaPalette.rose
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    if (category == 'Collares') {
-      final chain = Path()
-        ..moveTo(4, 5)
-        ..cubicTo(4, 15, 8, 21, 14, 21)
-        ..cubicTo(20, 21, 24, 15, 24, 5);
-      canvas.drawPath(chain, line);
-      canvas.drawLine(const Offset(14, 21), const Offset(14, 23), line);
-      canvas.drawCircle(const Offset(14, 25), 2, line);
-    } else if (category == 'Aretes') {
-      for (final x in [8.0, 20.0]) {
-        canvas.drawCircle(Offset(x, 5), 1.8, line);
-        canvas.drawLine(Offset(x, 7), Offset(x, 12), line);
-        final drop = Path()
-          ..moveTo(x, 12)
-          ..cubicTo(x - 7, 20, x - 3, 25, x, 25)
-          ..cubicTo(x + 3, 25, x + 7, 20, x, 12);
-        canvas.drawPath(drop, line);
-      }
-    } else if (category == 'Pulseras') {
-      canvas.drawOval(const Rect.fromLTWH(3, 7, 22, 14), line);
-      canvas.drawCircle(const Offset(14, 21), 3, line);
-      canvas.drawLine(const Offset(4, 12), const Offset(7, 12), line);
-      canvas.drawLine(const Offset(21, 12), const Offset(24, 12), line);
-    }
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _JewelryIconPainter oldDelegate) =>
-      category != oldDelegate.category;
-}
-
 /// Ramita decorativa dibujada en Flutter: no exige imágenes externas.
+
 class _Sprig extends StatelessWidget {
   final bool mirror;
   const _Sprig({required this.mirror});
