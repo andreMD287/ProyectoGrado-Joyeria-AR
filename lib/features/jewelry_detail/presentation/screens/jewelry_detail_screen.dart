@@ -67,64 +67,81 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
 
   Widget _buildContent(JewelryPiece piece) {
     return SafeArea(
-      bottom: false,
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(child: _buildHeader(piece)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-              child: _buildViewer(piece),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Normal iPhone: everything visible, without vertical scrolling.
+          // Short screens / large accessibility text: preserve all content.
+          final fallback =
+              constraints.maxHeight < 720 ||
+              MediaQuery.textScalerOf(context).scale(1) > 1.3;
+          final details = _buildInformation(piece);
+          final actions = _buildActions(piece);
+
+          if (fallback) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  _buildHeader(piece),
+                  const SizedBox(height: 8),
+                  SizedBox(height: 270, child: _buildViewer(piece)),
+                  const SizedBox(height: 14),
+                  details,
+                  const SizedBox(height: 14),
+                  actions,
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          }
+
+          final viewerHeight = (constraints.maxHeight * 0.47)
+              .clamp(270.0, 390.0)
+              .toDouble();
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildHeader(piece),
+                SizedBox(height: viewerHeight, child: _buildViewer(piece)),
+                details,
+                actions,
+              ],
             ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(26, 28, 26, 0),
-              child: _buildInformation(piece),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(26, 26, 26, 40),
-              child: _buildActions(piece),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildHeader(JewelryPiece piece) {
     return SizedBox(
-      height: 76,
-      child: Stack(
-        alignment: Alignment.center,
+      height: 44,
+      child: Row(
         children: [
-          Positioned(
-            left: 12,
+          SizedBox(
+            width: 44,
             child: IconButton(
+              tooltip: 'Volver',
+              padding: EdgeInsets.zero,
               onPressed: () => context.pop(),
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: _espresso,
-                size: 29,
-              ),
+              icon: const Icon(Icons.arrow_back_rounded, color: _espresso),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 70),
+          const Expanded(
             child: Text(
-              piece.nombre,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              'DETALLE DE JOYA',
+              textAlign: TextAlign.center,
+              style: TextStyle(
                 color: _espresso,
-                fontFamily: 'Georgia',
-                fontSize: 24,
+                fontSize: 11,
+                letterSpacing: 2,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
+          const SizedBox(width: 44),
         ],
       ),
     );
@@ -132,7 +149,7 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
 
   Widget _buildViewer(JewelryPiece piece) {
     return Container(
-      height: 355,
+      width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
         color: const Color(0xFFF0DEDA),
@@ -160,7 +177,7 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
           ),
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 52, 6, 45),
+              padding: const EdgeInsets.fromLTRB(3, 35, 3, 25),
               child: ref
                   .watch(resolvedModelAssetProvider(piece.modeloGlb))
                   .when(
@@ -198,7 +215,7 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
             left: 18,
             top: 18,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: const Color(0xFFD4AE68),
                 borderRadius: BorderRadius.circular(18),
@@ -207,7 +224,7 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
                 '360°',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -236,38 +253,26 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
               ],
             ),
           ),
-          Positioned(
+          const Positioned(
             left: 0,
             right: 0,
-            bottom: 17,
+            bottom: 10,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.pan_tool_alt_outlined,
+                Icon(
+                  Icons.touch_app_outlined,
+                  size: 15,
                   color: Color(0xFF8D7766),
-                  size: 18,
                 ),
-                const SizedBox(width: 7),
-                const Text(
-                  'Arrastra para girar',
-                  style: TextStyle(color: Color(0xFF8D7766), fontSize: 12),
-                ),
-                Container(
-                  width: 1,
-                  height: 20,
-                  margin: const EdgeInsets.symmetric(horizontal: 13),
-                  color: const Color(0xFFD4C1AD),
-                ),
-                const Icon(
-                  Icons.pinch_outlined,
-                  color: Color(0xFF8D7766),
-                  size: 19,
-                ),
-                const SizedBox(width: 7),
-                const Text(
-                  'Pellizca para acercar',
-                  style: TextStyle(color: Color(0xFF8D7766), fontSize: 12),
+                SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    'Arrastra para girar · Pellizca para acercar',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, color: Color(0xFF8D7766)),
+                  ),
                 ),
               ],
             ),
@@ -279,62 +284,58 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
 
   Widget _buildInformation(JewelryPiece piece) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          piece.nombre,
-          style: const TextStyle(
-            color: _espresso,
-            fontFamily: 'Georgia',
-            fontSize: 37,
-            height: 1.05,
-          ),
-        ),
-        const SizedBox(height: 13),
         Text(
           _categoryLabel(piece.categoria).toUpperCase(),
           style: const TextStyle(
             color: _gold,
-            fontSize: 13,
+            fontSize: 11,
             fontWeight: FontWeight.w700,
-            letterSpacing: 2.3,
+            letterSpacing: 1.8,
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 5),
+        Text(
+          piece.nombre,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: _espresso,
+            fontFamily: 'Georgia',
+            fontSize: 27,
+            height: 1.08,
+          ),
+        ),
+        const SizedBox(height: 6),
         Text(
           piece.descripcion ??
               'Una pieza diseñada para complementar tu estilo.',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Color(0xFF8B7768),
-            fontSize: 16,
-            height: 1.55,
+            fontSize: 13,
+            height: 1.3,
           ),
         ),
-        const SizedBox(height: 26),
+        const SizedBox(height: 12),
+        const Divider(height: 1, color: Color(0xFFE5CFCB)),
+        const SizedBox(height: 10),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _InfoCard(
-                icon: Icons.diamond_outlined,
                 label: 'MATERIAL',
                 value: piece.material ?? 'No disponible',
               ),
             ),
-            const SizedBox(width: 10),
+            Container(height: 38, width: 1, color: const Color(0xFFE5CFCB)),
+            const SizedBox(width: 16),
             Expanded(
-              child: _InfoCard(
-                icon: Icons.straighten_rounded,
-                label: 'MEDIDA',
-                value: _dimensionLabel(piece),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _InfoCard(
-                icon: _categoryIcon(piece.categoria),
-                label: 'TIPO',
-                value: _categoryLabel(piece.categoria),
-              ),
+              child: _InfoCard(label: 'MEDIDA', value: _dimensionLabel(piece)),
             ),
           ],
         ),
@@ -343,36 +344,19 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
   }
 
   Widget _buildActions(JewelryPiece piece) {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => context.push('/piece/${piece.id}/3d'),
-            icon: const Icon(Icons.view_in_ar_outlined, size: 18),
-            label: const Text('Ver en 3D', style: TextStyle(fontSize: 12)),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _gold,
-              side: const BorderSide(color: _gold),
-              padding: const EdgeInsets.symmetric(vertical: 17),
-              shape: const StadiumBorder(),
-            ),
-          ),
+    return SizedBox(
+      height: 52,
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: () => context.push('/try-on/${piece.id}/prepare'),
+        icon: const Icon(Icons.center_focus_strong, size: 20),
+        label: const Text('Probar con AR', style: TextStyle(fontSize: 15)),
+        style: FilledButton.styleFrom(
+          backgroundColor: _gold,
+          foregroundColor: Colors.white,
+          shape: const StadiumBorder(),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: FilledButton.icon(
-            onPressed: () => context.push('/try-on/${piece.id}/prepare'),
-            icon: const Icon(Icons.center_focus_strong, size: 18),
-            label: const Text('Probar con AR', style: TextStyle(fontSize: 12)),
-            style: FilledButton.styleFrom(
-              backgroundColor: _gold,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 17),
-              shape: const StadiumBorder(),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -381,14 +365,6 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
       JewelryCategory.bracelet => 'Pulseras',
       JewelryCategory.earring => 'Aretes',
       JewelryCategory.necklace => 'Collares',
-    };
-  }
-
-  IconData _categoryIcon(JewelryCategory category) {
-    return switch (category) {
-      JewelryCategory.bracelet => Icons.watch_outlined,
-      JewelryCategory.earring => Icons.diamond_outlined,
-      JewelryCategory.necklace => Icons.favorite_border_rounded,
     };
   }
 
@@ -431,7 +407,7 @@ class _ViewerButton extends StatelessWidget {
         child: SizedBox(
           width: 52,
           height: 52,
-          child: Icon(icon, color: const Color(0xFF9D7747), size: 27),
+          child: Icon(icon, color: const Color(0xFF9D7747), size: 22),
         ),
       ),
     );
@@ -439,60 +415,38 @@ class _ViewerButton extends StatelessWidget {
 }
 
 class _InfoCard extends StatelessWidget {
-  final IconData icon;
   final String label;
   final String value;
 
-  const _InfoCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _InfoCard({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 94,
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFAF9),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFECDAD7)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: const Color(0xFFA35F70)),
-              const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF8F7B6C),
-                    fontSize: 9,
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF9B7976),
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
           ),
-          const Spacer(),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF2C251F),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color(0xFF432B31),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
