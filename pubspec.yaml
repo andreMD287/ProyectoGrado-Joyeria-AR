@@ -68,6 +68,8 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/jewelry_icons/
+    - assets/jewelry_home/
     - assets/catalog/catalog.json
     - assets/environments/
     - assets/models/

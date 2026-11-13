@@ -53,6 +53,11 @@ PODS:
   - FirebaseRemoteConfigInterop (11.15.0)
   - FirebaseSharedSwift (11.15.0)
   - Flutter (1.0.0)
+  - flutter_angle (0.4.2):
+    - Flutter
+    - FlutterAngle (~> 0.0.8)
+    - FlutterMacOS
+  - FlutterAngle (0.0.8)
   - geolocator_apple (1.2.0):
     - Flutter
     - FlutterMacOS
@@ -150,6 +155,8 @@ PODS:
     - BlueRSA (~> 1.0)
     - KituraContracts (~> 1.2)
     - LoggerAPI (~> 1.7)
+  - three_js_sensors (0.2.0):
+    - Flutter
   - url_launcher_ios (0.0.1):
     - Flutter
   - webview_flutter_wkwebview (0.0.1):
@@ -160,11 +167,13 @@ DEPENDENCIES:
   - ar_flutter_plugin_2 (from `.symlinks/plugins/ar_flutter_plugin_2/ios`)
   - camera_avfoundation (from `.symlinks/plugins/camera_avfoundation/darwin`)
   - Flutter (from `Flutter`)
+  - flutter_angle (from `.symlinks/plugins/flutter_angle/darwin`)
   - geolocator_apple (from `.symlinks/plugins/geolocator_apple/darwin`)
   - google_mlkit_commons (from `.symlinks/plugins/google_mlkit_commons/ios`)
   - google_mlkit_face_detection (from `.symlinks/plugins/google_mlkit_face_detection/ios`)
   - google_mlkit_pose_detection (from `.symlinks/plugins/google_mlkit_pose_detection/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - three_js_sensors (from `.symlinks/plugins/three_js_sensors/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - webview_flutter_wkwebview (from `.symlinks/plugins/webview_flutter_wkwebview/darwin`)
 
@@ -182,6 +191,7 @@ SPEC REPOS:
     - FirebaseRemoteConfig
     - FirebaseRemoteConfigInterop
     - FirebaseSharedSwift
+    - FlutterAngle
     - GLTFSceneKit
     - GoogleDataTransport
     - GoogleMLKit
@@ -210,6 +220,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/camera_avfoundation/darwin"
   Flutter:
     :path: Flutter
+  flutter_angle:
+    :path: ".symlinks/plugins/flutter_angle/darwin"
   geolocator_apple:
     :path: ".symlinks/plugins/geolocator_apple/darwin"
   google_mlkit_commons:
@@ -220,6 +232,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/google_mlkit_pose_detection/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  three_js_sensors:
+    :path: ".symlinks/plugins/three_js_sensors/ios"
   url_launcher_ios:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
   webview_flutter_wkwebview:
@@ -240,7 +254,9 @@ SPEC CHECKSUMS:
   FirebaseRemoteConfig: b496646b82855e174a7f1e354c65e0e913085168
   FirebaseRemoteConfigInterop: 1c6135e8a094cc6368949f5faeeca7ee8948b8aa
   FirebaseSharedSwift: e17c654ef1f1a616b0b33054e663ad1035c8fd40
-  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_angle: 68742dae62c908b37adc0300c1d09e56064d54b4
+  FlutterAngle: c810891af800750361b1d0e7cc944f2338d5ae18
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
   GLTFSceneKit: d1b437c514ba2aed5555afb0fddd64e030612d57
   google_mlkit_commons: a5e4ffae5bc59ea4c7b9025dc72cb6cb79dc1166
@@ -266,6 +282,7 @@ SPEC CHECKSUMS:
   permission_handler_apple: 92d754bbaa7361d436db2d6c3c1c2a0fdcec462e
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   SwiftJWT: 88c412708f58c169d431d344c87bc79a87c830ae
+  three_js_sensors: 588c345b9ae356162449f14d11f7d1cf49a713d0
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 

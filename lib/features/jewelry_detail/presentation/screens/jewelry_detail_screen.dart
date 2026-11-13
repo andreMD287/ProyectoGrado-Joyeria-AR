@@ -12,23 +12,19 @@ import '../../../catalog/presentation/controllers/catalog_controller.dart';
 class JewelryDetailScreen extends ConsumerStatefulWidget {
   final String pieceId;
 
-  const JewelryDetailScreen({
-    super.key,
-    required this.pieceId,
-  });
+  const JewelryDetailScreen({super.key, required this.pieceId});
 
   @override
   ConsumerState<JewelryDetailScreen> createState() =>
       _JewelryDetailScreenState();
 }
 
-class _JewelryDetailScreenState
-    extends ConsumerState<JewelryDetailScreen> {
+class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
   int _viewerVersion = 0;
 
-  static const _background = Color(0xFFFBF7F2);
-  static const _espresso = Color(0xFF3A2419);
-  static const _gold = Color(0xFFB4895B);
+  static const _background = Color(0xFFF8F0EE);
+  static const _espresso = Color(0xFF432B31);
+  static const _gold = Color(0xFFA35F70);
 
   JewelryPiece? _findPiece(List<JewelryPiece> pieces) {
     for (final piece in pieces) {
@@ -48,10 +44,7 @@ class _JewelryDetailScreenState
       backgroundColor: _background,
       body: catalog.when(
         loading: () => const Center(
-          child: CircularProgressIndicator(
-            color: _gold,
-            strokeWidth: 2,
-          ),
+          child: CircularProgressIndicator(color: _gold, strokeWidth: 2),
         ),
         error: (error, _) => Center(
           child: Text(
@@ -63,9 +56,7 @@ class _JewelryDetailScreenState
           final piece = _findPiece(pieces);
 
           if (piece == null) {
-            return const Center(
-              child: Text('No encontramos esta joya.'),
-            );
+            return const Center(child: Text('No encontramos esta joya.'));
           }
 
           return _buildContent(piece);
@@ -76,66 +67,81 @@ class _JewelryDetailScreenState
 
   Widget _buildContent(JewelryPiece piece) {
     return SafeArea(
-      bottom: false,
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: _buildHeader(piece),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-              child: _buildViewer(piece),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Normal iPhone: everything visible, without vertical scrolling.
+          // Short screens / large accessibility text: preserve all content.
+          final fallback =
+              constraints.maxHeight < 720 ||
+              MediaQuery.textScalerOf(context).scale(1) > 1.3;
+          final details = _buildInformation(piece);
+          final actions = _buildActions(piece);
+
+          if (fallback) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  _buildHeader(piece),
+                  const SizedBox(height: 8),
+                  SizedBox(height: 270, child: _buildViewer(piece)),
+                  const SizedBox(height: 14),
+                  details,
+                  const SizedBox(height: 14),
+                  actions,
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          }
+
+          final viewerHeight = (constraints.maxHeight * 0.47)
+              .clamp(270.0, 390.0)
+              .toDouble();
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildHeader(piece),
+                SizedBox(height: viewerHeight, child: _buildViewer(piece)),
+                details,
+                actions,
+              ],
             ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(26, 28, 26, 0),
-              child: _buildInformation(piece),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(26, 26, 26, 40),
-              child: _buildActions(piece),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildHeader(JewelryPiece piece) {
     return SizedBox(
-      height: 76,
-      child: Stack(
-        alignment: Alignment.center,
+      height: 44,
+      child: Row(
         children: [
-          Positioned(
-            left: 12,
+          SizedBox(
+            width: 44,
             child: IconButton(
+              tooltip: 'Volver',
+              padding: EdgeInsets.zero,
               onPressed: () => context.pop(),
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: _espresso,
-                size: 29,
-              ),
+              icon: const Icon(Icons.arrow_back_rounded, color: _espresso),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 70),
+          const Expanded(
             child: Text(
-              piece.nombre,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              'DETALLE DE JOYA',
+              textAlign: TextAlign.center,
+              style: TextStyle(
                 color: _espresso,
-                fontFamily: 'Georgia',
-                fontSize: 24,
+                fontSize: 11,
+                letterSpacing: 2,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
+          const SizedBox(width: 44),
         ],
       ),
     );
@@ -143,10 +149,10 @@ class _JewelryDetailScreenState
 
   Widget _buildViewer(JewelryPiece piece) {
     return Container(
-      height: 430,
+      width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
-        color: const Color(0xFFF2E4D5),
+        color: const Color(0xFFF0DEDA),
         boxShadow: [
           BoxShadow(
             color: _espresso.withValues(alpha: 0.07),
@@ -164,28 +170,16 @@ class _JewelryDetailScreenState
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFFF8EEE3),
-                    Color(0xFFECD9C4),
-                  ],
+                  colors: [Color(0xFFF8EEEE), Color(0xFFE9D3D1)],
                 ),
               ),
             ),
           ),
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                6,
-                52,
-                6,
-                45,
-              ),
+              padding: const EdgeInsets.fromLTRB(3, 35, 3, 25),
               child: ref
-                  .watch(
-                    resolvedModelAssetProvider(
-                      piece.modeloGlb,
-                    ),
-                  )
+                  .watch(resolvedModelAssetProvider(piece.modeloGlb))
                   .when(
                     loading: () => const Center(
                       child: CircularProgressIndicator(
@@ -201,9 +195,7 @@ class _JewelryDetailScreenState
                     ),
                     data: (src) => CurrentRouteOnly(
                       child: ModelViewer(
-                        key: ValueKey(
-                          '$_viewerVersion-$src',
-                        ),
+                        key: ValueKey('$_viewerVersion-$src'),
                         src: src,
                         alt: piece.nombre,
                         orientation: piece.orientacionYawDeg == 0
@@ -223,10 +215,7 @@ class _JewelryDetailScreenState
             left: 18,
             top: 18,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 9,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: const Color(0xFFD4AE68),
                 borderRadius: BorderRadius.circular(18),
@@ -235,7 +224,7 @@ class _JewelryDetailScreenState
                 '360°',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -258,51 +247,31 @@ class _JewelryDetailScreenState
                 _ViewerButton(
                   icon: Icons.open_in_full_rounded,
                   onTap: () {
-                    context.push(
-                      '/piece/${piece.id}/3d',
-                    );
+                    context.push('/piece/${piece.id}/3d');
                   },
                 ),
               ],
             ),
           ),
-          Positioned(
+          const Positioned(
             left: 0,
             right: 0,
-            bottom: 17,
+            bottom: 10,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.pan_tool_alt_outlined,
+                Icon(
+                  Icons.touch_app_outlined,
+                  size: 15,
                   color: Color(0xFF8D7766),
-                  size: 18,
                 ),
-                const SizedBox(width: 7),
-                const Text(
-                  'Arrastra para girar',
-                  style: TextStyle(
-                    color: Color(0xFF8D7766),
-                    fontSize: 12,
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  height: 20,
-                  margin: const EdgeInsets.symmetric(horizontal: 13),
-                  color: const Color(0xFFD4C1AD),
-                ),
-                const Icon(
-                  Icons.pinch_outlined,
-                  color: Color(0xFF8D7766),
-                  size: 19,
-                ),
-                const SizedBox(width: 7),
-                const Text(
-                  'Pellizca para acercar',
-                  style: TextStyle(
-                    color: Color(0xFF8D7766),
-                    fontSize: 12,
+                SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    'Arrastra para girar · Pellizca para acercar',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, color: Color(0xFF8D7766)),
                   ),
                 ),
               ],
@@ -315,62 +284,58 @@ class _JewelryDetailScreenState
 
   Widget _buildInformation(JewelryPiece piece) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          piece.nombre,
-          style: const TextStyle(
-            color: _espresso,
-            fontFamily: 'Georgia',
-            fontSize: 37,
-            height: 1.05,
-          ),
-        ),
-        const SizedBox(height: 13),
         Text(
           _categoryLabel(piece.categoria).toUpperCase(),
           style: const TextStyle(
             color: _gold,
-            fontSize: 13,
+            fontSize: 11,
             fontWeight: FontWeight.w700,
-            letterSpacing: 2.3,
+            letterSpacing: 1.8,
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 5),
+        Text(
+          piece.nombre,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: _espresso,
+            fontFamily: 'Georgia',
+            fontSize: 27,
+            height: 1.08,
+          ),
+        ),
+        const SizedBox(height: 6),
         Text(
           piece.descripcion ??
               'Una pieza diseñada para complementar tu estilo.',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Color(0xFF8B7768),
-            fontSize: 16,
-            height: 1.55,
+            fontSize: 13,
+            height: 1.3,
           ),
         ),
-        const SizedBox(height: 26),
+        const SizedBox(height: 12),
+        const Divider(height: 1, color: Color(0xFFE5CFCB)),
+        const SizedBox(height: 10),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _InfoCard(
-                icon: Icons.diamond_outlined,
                 label: 'MATERIAL',
                 value: piece.material ?? 'No disponible',
               ),
             ),
-            const SizedBox(width: 10),
+            Container(height: 38, width: 1, color: const Color(0xFFE5CFCB)),
+            const SizedBox(width: 16),
             Expanded(
-              child: _InfoCard(
-                icon: Icons.straighten_rounded,
-                label: 'MEDIDA',
-                value: _dimensionLabel(piece),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _InfoCard(
-                icon: _categoryIcon(piece.categoria),
-                label: 'TIPO',
-                value: _categoryLabel(piece.categoria),
-              ),
+              child: _InfoCard(label: 'MEDIDA', value: _dimensionLabel(piece)),
             ),
           ],
         ),
@@ -379,86 +344,19 @@ class _JewelryDetailScreenState
   }
 
   Widget _buildActions(JewelryPiece piece) {
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 64,
-          child: FilledButton(
-            onPressed: () {
-              // NUEVO FLUJO:
-              // Detalle → Preparación → Cámara AR
-              context.push(
-                '/try-on/${piece.id}/prepare',
-              );
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF171512),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.photo_camera_outlined,
-                  size: 25,
-                ),
-                SizedBox(width: 13),
-                Text(
-                  'Probar virtualmente',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
+    return SizedBox(
+      height: 52,
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: () => context.push('/try-on/${piece.id}/prepare'),
+        icon: const Icon(Icons.center_focus_strong, size: 20),
+        label: const Text('Probar con AR', style: TextStyle(fontSize: 15)),
+        style: FilledButton.styleFrom(
+          backgroundColor: _gold,
+          foregroundColor: Colors.white,
+          shape: const StadiumBorder(),
         ),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          height: 64,
-          child: OutlinedButton(
-            onPressed: () {
-              context.push(
-                '/piece/${piece.id}/3d',
-              );
-            },
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _gold,
-              side: const BorderSide(
-                color: _gold,
-                width: 1.4,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.view_in_ar_outlined,
-                  size: 27,
-                ),
-                SizedBox(width: 13),
-                Text(
-                  'Ver en 3D',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -467,14 +365,6 @@ class _JewelryDetailScreenState
       JewelryCategory.bracelet => 'Pulseras',
       JewelryCategory.earring => 'Aretes',
       JewelryCategory.necklace => 'Collares',
-    };
-  }
-
-  IconData _categoryIcon(JewelryCategory category) {
-    return switch (category) {
-      JewelryCategory.bracelet => Icons.watch_outlined,
-      JewelryCategory.earring => Icons.diamond_outlined,
-      JewelryCategory.necklace => Icons.favorite_border_rounded,
     };
   }
 
@@ -504,10 +394,7 @@ class _ViewerButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _ViewerButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _ViewerButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -520,11 +407,7 @@ class _ViewerButton extends StatelessWidget {
         child: SizedBox(
           width: 52,
           height: 52,
-          child: Icon(
-            icon,
-            color: const Color(0xFF9D7747),
-            size: 27,
-          ),
+          child: Icon(icon, color: const Color(0xFF9D7747), size: 22),
         ),
       ),
     );
@@ -532,70 +415,38 @@ class _ViewerButton extends StatelessWidget {
 }
 
 class _InfoCard extends StatelessWidget {
-  final IconData icon;
   final String label;
   final String value;
 
-  const _InfoCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _InfoCard({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 94,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 11,
-        vertical: 12,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF8),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFFE7D7C3),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF9B7976),
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: const Color(0xFFB4895B),
-              ),
-              const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF8F7B6C),
-                    fontSize: 9,
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
+        const SizedBox(height: 5),
+        Text(
+          value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color(0xFF432B31),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
-          const Spacer(),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF2C251F),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
-
