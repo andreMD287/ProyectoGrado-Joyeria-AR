@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../domain/entities/jewelry_category.dart';
 import '../../domain/entities/jewelry_piece.dart';
-import '../../../../app/theme.dart';
 
 /// Muestra una foto del catálogo si existe; si no, dibuja una joya vectorial.
 class JewelryArtwork extends StatelessWidget {
