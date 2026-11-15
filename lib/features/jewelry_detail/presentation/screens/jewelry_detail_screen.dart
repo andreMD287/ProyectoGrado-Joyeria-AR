@@ -8,6 +8,7 @@ import '../../../../core/widgets/current_route_only.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
+import '../../../catalog/presentation/controllers/favorites_controller.dart';
 
 class JewelryDetailScreen extends ConsumerStatefulWidget {
   final String pieceId;
@@ -141,13 +142,90 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 44),
+          SizedBox(
+            width: 44,
+            child: IconButton(
+              tooltip:
+                  ref
+                          .watch(favoritesProvider)
+                          .valueOrNull
+                          ?.contains(piece.id) ??
+                      false
+                  ? 'Quitar de mi joyero'
+                  : 'Guardar en mi joyero',
+              onPressed: () {
+                ref.read(favoritesProvider.notifier).toggle(piece.id);
+              },
+              icon: Icon(
+                ref.watch(favoritesProvider).valueOrNull?.contains(piece.id) ??
+                        false
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                color: _gold,
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildViewer(JewelryPiece piece) {
+    // Para una foto sin modelo confirmado, nunca mostramos un GLB de otra joya.
+    if (piece.modeloGlb.isEmpty) {
+      return Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          color: const Color(0xFFF0DEDA),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              piece.foto,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stack) => const Center(
+                child: Icon(Icons.diamond_outlined, size: 54, color: _gold),
+              ),
+            ),
+            Positioned(
+              top: 16,
+              left: 16,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.93),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    'FOTOGRAFÍA',
+                    style: TextStyle(
+                      color: _espresso,
+                      letterSpacing: 1,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Positioned(
+              bottom: 14,
+              left: 14,
+              right: 14,
+              child: Text(
+                'Modelo 3D pendiente de verificar',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: _espresso, fontSize: 11),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -344,6 +422,44 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
   }
 
   Widget _buildActions(JewelryPiece piece) {
+    // Esta pieza ya tiene 3D, pero aún no dispone de medidas físicas para AR.
+    if (piece.id == 'collar-circonita-foto-01' &&
+        (piece.dimensionesMm.longitud ?? 0) <= 0) {
+      return Container(
+        width: double.infinity,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8DCDA),
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: const Text(
+          'AR pendiente de calibración',
+          style: TextStyle(fontSize: 13, color: _espresso),
+        ),
+      );
+    }
+    if (piece.modeloGlb.isEmpty) {
+      return Container(
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          color: const Color(0xFFE8DCDA),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.center_focus_strong, size: 20, color: _espresso),
+            SizedBox(width: 10),
+            Text(
+              'Modelo AR todavía no disponible',
+              style: TextStyle(fontSize: 13, color: _espresso),
+            ),
+          ],
+        ),
+      );
+    }
     return SizedBox(
       height: 52,
       width: double.infinity,
@@ -369,6 +485,13 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
   }
 
   String _dimensionLabel(JewelryPiece piece) {
+    if (piece.id == 'collar-circonita-foto-01' &&
+        (piece.dimensionesMm.longitud ?? 0) <= 0) {
+      return 'Por confirmar';
+    }
+    if (piece.modeloGlb.isEmpty) {
+      return 'Por confirmar';
+    }
     final dimensions = piece.dimensionesMm;
 
     switch (piece.categoria) {

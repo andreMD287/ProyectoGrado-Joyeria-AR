@@ -42,23 +42,35 @@ class HomeScreen extends ConsumerWidget {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(22, 16, 22, 28),
       children: [
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(
-              Icons.auto_awesome_outlined,
-              color: JoyeriaPalette.gold,
-              size: 22,
+            IconButton(
+              tooltip: 'Descubre AR',
+              onPressed: () => context.push('/discover-ar'),
+              icon: const Icon(
+                Icons.auto_awesome_outlined,
+                color: JoyeriaPalette.gold,
+                size: 24,
+              ),
             ),
-            Text(
+            const Text(
               'Jewelry AR',
               style: TextStyle(
-                fontSize: 25,
                 fontFamily: 'Georgia',
+                fontSize: 25,
                 color: JoyeriaPalette.espresso,
               ),
             ),
-            Icon(Icons.diamond_outlined, color: JoyeriaPalette.rose, size: 23),
+            IconButton(
+              tooltip: 'Mi joyero',
+              onPressed: () => context.push('/favorites'),
+              icon: const Icon(
+                Icons.diamond_outlined,
+                color: JoyeriaPalette.rose,
+                size: 25,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 34),
@@ -130,7 +142,7 @@ class HomeScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 26),
         GestureDetector(
-          onTap: () => context.push('/catalog?category=pulsera'),
+          onTap: () => context.push('/piece/pulsera-eslabon-01'),
           child: Container(
             height: 186,
             clipBehavior: Clip.antiAlias,
@@ -246,50 +258,50 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-/// Fotografías de referencia para el inicio, sin relacionarlas con GLB.
-/// Las fichas reales y sus modelos se consultan desde /catalog.
+/// Fotografías destacadas: cada una está vinculada a su ficha por ID.
+/// Las fotos sin GLB tienen ficha propia y no ofrecen AR hasta tener modelo.
 class _EditorialPhoto {
   final String asset;
   final String label;
-  final String category;
-  const _EditorialPhoto(this.asset, this.label, this.category);
+  final String pieceId;
+  const _EditorialPhoto(this.asset, this.label, this.pieceId);
 }
 
 const _editorialPhotos = <_EditorialPhoto>[
   _EditorialPhoto(
     'assets/jewelry_home/05_aretes_circulares_circonita.jpg',
     'Aretes circulares con circonita',
-    'arete',
+    'arete-colgante-01',
   ),
   _EditorialPhoto(
     'assets/jewelry_home/07_pulsera_de_perlas.jpg',
     'Pulsera de perlas',
-    'pulsera',
+    'pulsera-perlas-01',
   ),
   _EditorialPhoto(
     'assets/jewelry_home/03_collar_resina_azul.jpg',
     'Collar piedra de resina azul',
-    'collar',
+    'collar-cadena-01',
   ),
   _EditorialPhoto(
     'assets/jewelry_home/06_pulsera_tipo_cartier.jpg',
     'Pulsera tipo Cartier',
-    'pulsera',
+    'pulsera-eslabon-01',
   ),
   _EditorialPhoto(
     'assets/jewelry_home/01_collar_piedra_circonita.jpg',
     'Collar piedra de circonita',
-    'collar',
+    'collar-circonita-foto-01',
   ),
   _EditorialPhoto(
     'assets/jewelry_home/02_cadena_de_plata.jpg',
     'Cadena de plata',
-    'collar',
+    'collar-cadena-02',
   ),
   _EditorialPhoto(
     'assets/jewelry_home/04_arete_de_perla.jpg',
     'Arete de perla',
-    'arete',
+    'arete-gota-01',
   ),
 ];
 
@@ -300,7 +312,7 @@ class _EditorialPhotoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.push('/catalog?category=${photo.category}'),
+      onTap: () => context.push('/piece/${photo.pieceId}'),
       borderRadius: BorderRadius.circular(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,7 +350,7 @@ class _EditorialPhotoCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Explorar categoría',
+            'Ver detalle',
             style: TextStyle(fontSize: 11, color: JoyeriaPalette.muted),
           ),
         ],

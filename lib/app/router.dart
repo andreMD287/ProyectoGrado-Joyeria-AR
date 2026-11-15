@@ -4,6 +4,8 @@ import '../features/ar_experience/presentation/screens/try_on_prepare_screen.dar
 import '../features/ar_experience/presentation/screens/try_on_screen.dart';
 import '../features/catalog/presentation/screens/catalog_screen.dart';
 import '../features/catalog/presentation/screens/home_screen.dart';
+import '../features/catalog/presentation/screens/favorites_screen.dart';
+import '../features/catalog/presentation/screens/discover_ar_screen.dart';
 import '../features/jewelry_detail/presentation/screens/jewelry_3d_screen.dart';
 import '../features/jewelry_detail/presentation/screens/jewelry_detail_screen.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
@@ -15,6 +17,14 @@ final appRouter = GoRouter(
     GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
 
     GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
+    GoRoute(
+      path: '/favorites',
+      builder: (context, state) => const FavoritesScreen(),
+    ),
+    GoRoute(
+      path: '/discover-ar',
+      builder: (context, state) => const DiscoverArScreen(),
+    ),
 
     GoRoute(
       path: '/catalog',
