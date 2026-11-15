@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.3
 
   # ── Estado + inyección de dependencias (base de la arquitectura) ──
   flutter_riverpod: ^2.6.1

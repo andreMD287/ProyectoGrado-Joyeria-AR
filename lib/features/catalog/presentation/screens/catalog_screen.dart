@@ -12,6 +12,7 @@ import '../widgets/piece_card.dart';
 class CatalogScreen extends ConsumerStatefulWidget {
   final String? initialCategory;
   final String? initialSearch;
+
   const CatalogScreen({super.key, this.initialCategory, this.initialSearch});
 
   @override
@@ -43,16 +44,23 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
   }
 
   List<JewelryPiece> _filter(List<JewelryPiece> pieces) {
+    final text = _query.trim().toLowerCase();
     return pieces.where((piece) {
       final byCategory = _category == null || piece.categoria == _category;
-      final text = _query.trim().toLowerCase();
-      final byText =
-          text.isEmpty ||
+      final byText = text.isEmpty ||
           piece.nombre.toLowerCase().contains(text) ||
           (piece.material?.toLowerCase().contains(text) ?? false) ||
           (piece.descripcion?.toLowerCase().contains(text) ?? false);
       return byCategory && byText;
     }).toList();
+  }
+
+  void _clearFilters() {
+    _search.clear();
+    setState(() {
+      _query = '';
+      _category = null;
+    });
   }
 
   @override
@@ -71,7 +79,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               child: Text('Error al cargar el catálogo: $error'),
             ),
           ),
-          data: (pieces) => _buildCatalog(pieces),
+          data: _buildCatalog,
         ),
       ),
     );
@@ -79,18 +87,21 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
 
   Widget _buildCatalog(List<JewelryPiece> pieces) {
     final filtered = _filter(pieces);
+    final hasFilters = _category != null || _query.trim().isNotEmpty;
+
     return CustomScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       physics: const BouncingScrollPhysics(),
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 15, 20, 0),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
             child: Row(
               children: [
                 IconButton(
+                  onPressed: () => context.go('/home'),
                   icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
                   color: JoyeriaPalette.espresso,
-                  onPressed: () => context.go('/home'),
                 ),
                 const Expanded(
                   child: Text(
@@ -98,7 +109,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'Georgia',
-                      fontSize: 28,
+                      fontSize: 30,
                       color: JoyeriaPalette.espresso,
                     ),
                   ),
@@ -108,11 +119,38 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
             ),
           ),
         ),
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(22, 12, 22, 3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'NUESTRA COLECCIÓN',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2.0,
+                    color: JoyeriaPalette.rose,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'Encuentra tu próxima joya favorita',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: JoyeriaPalette.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 67,
+            height: 70,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+              padding: const EdgeInsets.fromLTRB(20, 15, 20, 12),
               scrollDirection: Axis.horizontal,
               children: [
                 _chip('Todas', null),
@@ -125,7 +163,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 15),
+            padding: const EdgeInsets.fromLTRB(20, 3, 20, 12),
             child: TextField(
               controller: _search,
               onChanged: (text) => setState(() => _query = text),
@@ -134,19 +172,19 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                 color: JoyeriaPalette.espresso,
               ),
               decoration: InputDecoration(
-                hintText: 'Buscar joyas...',
+                hintText: 'Buscar una joya...',
                 hintStyle: const TextStyle(color: JoyeriaPalette.muted),
-                prefixIcon: const Icon(
-                  Icons.search,
-                  color: JoyeriaPalette.muted,
-                ),
-                suffixIcon: IconButton(
-                  onPressed: () {
-                    _search.clear();
-                    setState(() => _query = '');
-                  },
-                  icon: const Icon(Icons.close, color: JoyeriaPalette.muted),
-                ),
+                prefixIcon: const Icon(Icons.search_rounded, color: JoyeriaPalette.muted),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Borrar búsqueda',
+                        onPressed: () {
+                          _search.clear();
+                          setState(() => _query = '');
+                        },
+                        icon: const Icon(Icons.close_rounded, color: JoyeriaPalette.muted),
+                      ),
                 filled: true,
                 fillColor: JoyeriaPalette.surface,
                 enabledBorder: OutlineInputBorder(
@@ -157,34 +195,82 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                   borderRadius: BorderRadius.circular(30),
                   borderSide: const BorderSide(color: JoyeriaPalette.rose),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(vertical: 15),
               ),
             ),
           ),
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-            child: Text(
-              '${filtered.length} joyas',
-              style: const TextStyle(color: JoyeriaPalette.muted, fontSize: 13),
+            padding: const EdgeInsets.fromLTRB(22, 0, 20, 12),
+            child: Row(
+              children: [
+                Text(
+                  '${filtered.length} ${filtered.length == 1 ? 'joya' : 'joyas'}',
+                  style: const TextStyle(
+                    color: JoyeriaPalette.muted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                if (hasFilters)
+                  TextButton(
+                    onPressed: _clearFilters,
+                    child: const Text(
+                      'Limpiar filtros',
+                      style: TextStyle(color: JoyeriaPalette.rose, fontSize: 12),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
         if (filtered.isEmpty)
-          const SliverFillRemaining(
-            child: Center(child: Text('No encontramos joyas con ese filtro.')),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(26),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.search_off_rounded, size: 44, color: JoyeriaPalette.muted),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'No encontramos joyas',
+                      style: TextStyle(
+                        fontFamily: 'Georgia',
+                        fontSize: 22,
+                        color: JoyeriaPalette.espresso,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Prueba con otra palabra o categoría.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: JoyeriaPalette.muted),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: _clearFilters,
+                      child: const Text('Ver todas las joyas'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 30),
             sliver: SliverGrid.builder(
               itemCount: filtered.length,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                mainAxisSpacing: 21,
-                crossAxisSpacing: 15,
-                childAspectRatio: .67,
+                mainAxisSpacing: 22,
+                crossAxisSpacing: 14,
+                childAspectRatio: 0.64,
               ),
               itemBuilder: (context, index) {
                 final piece = filtered[index];
@@ -208,6 +294,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
           label,
           style: TextStyle(
             fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             color: selected ? Colors.white : JoyeriaPalette.espresso,
           ),
         ),
@@ -220,7 +307,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         ),
         shape: const StadiumBorder(),
         showCheckmark: false,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
       ),
     );
   }

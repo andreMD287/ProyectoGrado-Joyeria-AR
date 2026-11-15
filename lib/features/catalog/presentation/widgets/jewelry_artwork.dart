@@ -7,7 +7,13 @@ import '../../domain/entities/jewelry_piece.dart';
 class JewelryArtwork extends StatelessWidget {
   final JewelryPiece piece;
   final bool showPhoto;
-  const JewelryArtwork({super.key, required this.piece, this.showPhoto = true});
+  final BoxFit photoFit;
+  const JewelryArtwork({
+    super.key,
+    required this.piece,
+    this.showPhoto = true,
+    this.photoFit = BoxFit.contain,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +34,7 @@ class JewelryArtwork extends StatelessWidget {
         child: showPhoto && piece.foto.isNotEmpty
             ? Image.asset(
                 piece.foto,
-                fit: BoxFit.contain,
+                fit: photoFit,
                 errorBuilder: (context, error, stack) => illustration(),
               )
             : illustration(),
