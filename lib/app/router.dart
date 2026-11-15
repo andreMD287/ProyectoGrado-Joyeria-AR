@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../features/ar_experience/presentation/screens/try_on_prepare_screen.dart';
+import '../features/ar_experience/presentation/screens/try_on_prepare_legacy_screen.dart';
 import '../features/ar_experience/presentation/screens/try_on_screen.dart';
 import '../features/catalog/presentation/screens/catalog_screen.dart';
 import '../features/catalog/presentation/screens/home_screen.dart';
@@ -44,6 +45,12 @@ final appRouter = GoRouter(
       path: '/piece/:pieceId/3d',
       builder: (context, state) =>
           Jewelry3dScreen(pieceId: state.pathParameters['pieceId']!),
+    ),
+
+    GoRoute(
+      path: '/try-on/:pieceId/prepare-advanced',
+      builder: (context, state) =>
+          TryOnPrepareLegacyScreen(pieceId: state.pathParameters['pieceId']!),
     ),
 
     GoRoute(

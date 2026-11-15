@@ -361,6 +361,15 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
   }
 
   Widget _buildInformation(JewelryPiece piece) {
+    // Diseño editorial: especificaciones de solo lectura, no son botones.
+    final measureTitle = switch (piece.categoria) {
+      JewelryCategory.bracelet =>
+        piece.dimensionesMm.diametro != null ? 'DIÁMETRO' : 'MEDIDA',
+      JewelryCategory.necklace =>
+        piece.dimensionesMm.longitud != null ? 'LONGITUD' : 'MEDIDA',
+      JewelryCategory.earring => 'ALTURA',
+    };
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,7 +395,7 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
             height: 1.08,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 7),
         Text(
           piece.descripcion ??
               'Una pieza diseñada para complementar tu estilo.',
@@ -395,28 +404,36 @@ class _JewelryDetailScreenState extends ConsumerState<JewelryDetailScreen> {
           style: const TextStyle(
             color: Color(0xFF8B7768),
             fontSize: 13,
-            height: 1.3,
+            height: 1.35,
           ),
         ),
-        const SizedBox(height: 12),
-        const Divider(height: 1, color: Color(0xFFE5CFCB)),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
+        const Divider(height: 1, thickness: 1, color: Color(0xFFE5CFCB)),
+        const SizedBox(height: 14),
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: _InfoCard(
+                icon: Icons.layers_outlined,
                 label: 'MATERIAL',
-                value: piece.material ?? 'No disponible',
+                value: piece.material ?? 'Por confirmar',
               ),
             ),
-            Container(height: 38, width: 1, color: const Color(0xFFE5CFCB)),
-            const SizedBox(width: 16),
+            const SizedBox(width: 9),
+            Container(height: 45, width: 1, color: const Color(0xFFE5CFCB)),
+            const SizedBox(width: 9),
             Expanded(
-              child: _InfoCard(label: 'MEDIDA', value: _dimensionLabel(piece)),
+              child: _InfoCard(
+                icon: Icons.straighten_rounded,
+                label: measureTitle,
+                value: _dimensionLabel(piece),
+              ),
             ),
           ],
         ),
+        const SizedBox(height: 14),
+        const Divider(height: 1, thickness: 1, color: Color(0xFFE5CFCB)),
       ],
     );
   }
@@ -538,35 +555,54 @@ class _ViewerButton extends StatelessWidget {
 }
 
 class _InfoCard extends StatelessWidget {
+  // Texto informativo. Intencionalmente NO usa InkWell, GestureDetector,
+  // ElevatedButton, Card ni superficies que parezcan pulsables.
+  final IconData icon;
   final String label;
   final String value;
 
-  const _InfoCard({required this.label, required this.value});
+  const _InfoCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF9B7976),
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          value,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Color(0xFF432B31),
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+        Icon(icon, color: const Color(0xFFA35F70), size: 21),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF9B7976),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                value,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF432B31),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
+                ),
+              ),
+            ],
           ),
         ),
       ],
