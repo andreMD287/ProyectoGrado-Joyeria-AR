@@ -103,6 +103,18 @@ npx gltf-transform optimize pieza.glb pieza.opt.glb --compress draco
 2. Colocarlo con `ar_flutter_plugin_2` sobre superficie y confirmar que **la escala real** se ve correcta (usar la medida en mm como verdad de terreno).
 3. Registrar cualquier discrepancia de material entre el visor y AR (ver ⚠ de §4.4).
 
+### 4.8 Aretes: orientación y punto de sujeción
+En Android los aretes se cuelgan de una cabeza invisible medida con la malla facial: van los dos, cada uno en su lóbulo, y se ocultan detrás de la cara, el cuello y el propio lóbulo. Para que eso calce, el modelo tiene que cumplir:
+
+1. **Frente hacia +Z y +Y arriba**, como se ve la pieza puesta mirando de lado a la oreja. Si se exportó con el frente hacia atrás, se corrige con `orientacion_yaw_deg` en el catálogo, pero lo correcto es arreglarlo en Blender.
+2. **Sin rotaciones sobrantes en los nodos padre.** Un Empty rotado hace que la pieza cuelgue torcida en el archivo; aplicar las transformaciones (§4.3) antes de exportar.
+3. **Tipo en el catálogo (`tipo_arete`)**: `boton` si va pegado al lóbulo con un poste, `colgante` si cuelga de un gancho o argolla, `aro` si es un aro que pasa por el lóbulo. Los colgantes y aros caen por gravedad y se balancean; los botones giran rígidos con la cabeza.
+4. **Punto de sujeción** (el que va en la perforación del lóbulo). Por orden de prioridad:
+   - `punto_sujecion` en el catálogo, en unidades del GLB y ya con `orientacion_yaw_deg` aplicado;
+   - un **Empty llamado `sujecion`** en el GLB, colocado en la perforación;
+   - si no hay ninguno, la app lo deduce: en un botón, el respaldo del adorno donde nace el poste; en un colgante o aro, lo más alto de la pieza.
+5. **`dimensiones_mm.alto` real**: es lo que fija el tamaño del arete (el alto del adorno en un botón, el largo que cuelga en un colgante).
+
 ---
 
 ## 5. Convenciones obligatorias (checklist de aceptación por pieza)
@@ -114,6 +126,7 @@ npx gltf-transform optimize pieza.glb pieza.opt.glb --compress draco
 - [ ] **≤ 50 000 triángulos**; detalle fino en normal map.
 - [ ] Renderiza correctamente en el **visor** y se ancla con escala real en **AR**.
 - [ ] **Dimensiones reales (mm)** y **tipo de anclaje** registrados en el catálogo (D3).
+- [ ] Aretes: **frente +Z**, **`tipo_arete`** en el catálogo y punto de sujeción claro (§4.8).
 
 ---
 

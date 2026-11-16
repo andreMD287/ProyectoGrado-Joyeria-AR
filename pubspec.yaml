@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.3
 
   # ── Estado + inyección de dependencias (base de la arquitectura) ──
   flutter_riverpod: ^2.6.1
@@ -68,6 +69,12 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/jewelry_icons/
+    - assets/jewelry_home/
     - assets/catalog/catalog.json
     - assets/environments/
     - assets/models/
+    # Modelos de MediaPipe para el cuello de los collares (NeckTracker en
+    # Android, NeckTrackingHandler en iOS). Una sola copia para las dos
+    # plataformas: cada lado los busca por su clave de asset de Flutter.
+    - assets/mediapipe/

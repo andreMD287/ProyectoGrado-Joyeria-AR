@@ -7,12 +7,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/theme.dart';
 import '../../../../core/assets/resolved_model_asset.dart';
 import '../../../../core/di/providers.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/head_geometry.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 import '../../../tracking/domain/entities/landmark.dart';
 import '../../../tracking/domain/strategies/bracelet_strategy.dart';
@@ -22,17 +24,14 @@ import '../widgets/jewelry_scene.dart';
 class TryOnScreen extends ConsumerWidget {
   final String pieceId;
 
-  const TryOnScreen({
-    super.key,
-    required this.pieceId,
-  });
+  const TryOnScreen({super.key, required this.pieceId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final catalog = ref.watch(catalogControllerProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFBF7F2),
+      backgroundColor: JoyeriaPalette.background,
       body: catalog.when(
         loading: () => const Center(
           child: CircularProgressIndicator(
@@ -57,9 +56,7 @@ class TryOnScreen extends ConsumerWidget {
           }
 
           if (piece == null) {
-            return const Center(
-              child: Text('Pieza no encontrada.'),
-            );
+            return const Center(child: Text('Pieza no encontrada.'));
           }
 
           return _TryOnBody(piece: piece);
@@ -72,17 +69,15 @@ class TryOnScreen extends ConsumerWidget {
 class _TryOnBody extends ConsumerStatefulWidget {
   final JewelryPiece piece;
 
-  const _TryOnBody({
-    required this.piece,
-  });
+  const _TryOnBody({required this.piece});
 
   @override
   ConsumerState<_TryOnBody> createState() => _TryOnBodyState();
 }
 
 class _TryOnBodyState extends ConsumerState<_TryOnBody> {
-  static const _espresso = Color(0xFF3A2419);
-  static const _muted = Color(0xFF8B7768);
+  static const _espresso = JoyeriaPalette.espresso;
+  static const _muted = JoyeriaPalette.muted;
 
   bool _started = false;
 
@@ -136,9 +131,7 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
 
     _started = true;
 
-    await ref
-        .read(tryOnControllerProvider.notifier)
-        .start(piece.categoria);
+    await ref.read(tryOnControllerProvider.notifier).start(piece.categoria);
   }
 
   Future<void> _finishExperience() async {
@@ -153,9 +146,7 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
   Widget build(BuildContext context) {
     final state = ref.watch(tryOnControllerProvider);
 
-    final active =
-        state is TryOnActive ||
-        state is TryOnRequestingPermission;
+    final active = state is TryOnActive || state is TryOnRequestingPermission;
 
     final anchor = switch (state) {
       TryOnActive(:final anchor) => anchor,
@@ -173,182 +164,168 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
     };
 
     return SafeArea(
-      bottom: false,
       child: Column(
         children: [
           _buildHeader(),
-
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 5, 22, 13),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'EN TIEMPO REAL',
+                  style: TextStyle(
+                    color: JoyeriaPalette.rose,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2.0,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  piece.nombre,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'Georgia',
+                    color: JoyeriaPalette.espresso,
+                    fontSize: 25,
+                    height: 1.12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // El visor ocupa SOLO el espacio disponible: nunca desplaza el botón.
           Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                22,
-                18,
-                22,
-                28,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    piece.nombre,
-                    style: const TextStyle(
-                      color: _espresso,
-                      fontFamily: 'Georgia',
-                      fontSize: 36,
-                      height: 1.05,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  Text(
-                    piece.descripcion ??
-                        'Visualiza esta joya sobre ti en tiempo real.',
-                    style: const TextStyle(
-                      color: _muted,
-                      fontSize: 15,
-                      height: 1.5,
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  _buildCameraCard(
-                    active: active,
-                    anchor: anchor,
-                    landmarks: landmarks,
-                    fps: fps,
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  _TrackingStatusCard(
-                    state: state,
-                    category: piece.categoria,
-                  ),
-
-                  const SizedBox(height: 22),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 62,
-                    child: FilledButton(
-                      onPressed: _finishExperience,
-                      style: FilledButton.styleFrom(
-                        backgroundColor:
-                            const Color(0xFFAA7410),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.stop_rounded,
-                            size: 22,
-                          ),
-                          SizedBox(width: 12),
-                          Text(
-                            'Detener',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-                ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: _buildCameraCard(
+                active: active,
+                anchor: anchor,
+                landmarks: landmarks,
+                fps: fps,
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
+            child: _necklaceBlockedOnIOS
+                ? const Text(
+                    'La prueba de collares no está disponible en iOS.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: JoyeriaPalette.muted, fontSize: 12),
+                  )
+                : _TrackingStatusCard(state: state, category: piece.categoria),
+          ),
+          _buildBottomAction(),
         ],
       ),
     );
   }
 
- Widget _buildHeader() {
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-    child: SizedBox(
-      height: 58,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 46,
-            height: 46,
-            child: Material(
-              color: const Color(0xFFF4ECE2),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: _finishExperience,
-                child: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: _espresso,
-                  size: 21,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          const Expanded(
-            child: Text(
-              'Prueba virtual',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: _espresso,
-                fontFamily: 'Georgia',
-                fontSize: 24,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          SizedBox(
-            width: 46,
-            height: 46,
-            child: Material(
-              color: const Color(0xFFF4ECE2),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Mantén la zona de la joya visible y muévete lentamente.',
-                      ),
-                    ),
-                  );
-                },
-                child: const Icon(
-                  Icons.question_mark_rounded,
-                  color: _espresso,
-                  size: 22,
-                ),
-              ),
-            ),
-          ),
-        ],
+  Widget _buildBottomAction() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 9, 18, 12),
+      decoration: const BoxDecoration(
+        color: JoyeriaPalette.background,
+        border: Border(top: BorderSide(color: JoyeriaPalette.stroke)),
       ),
-    ),
-  );
-}
+      child: SizedBox(
+        width: double.infinity,
+        height: 54,
+        child: FilledButton.icon(
+          onPressed: _finishExperience,
+          style: FilledButton.styleFrom(
+            backgroundColor: JoyeriaPalette.rose,
+            foregroundColor: Colors.white,
+            shape: const StadiumBorder(),
+          ),
+          icon: const Icon(Icons.close_rounded, size: 21),
+          label: const Text(
+            'Finalizar prueba',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+      child: SizedBox(
+        height: 58,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 46,
+              height: 46,
+              child: Material(
+                color: JoyeriaPalette.blush,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _finishExperience,
+                  child: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: _espresso,
+                    size: 21,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            const Expanded(
+              child: Text(
+                'Prueba virtual',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _espresso,
+                  fontFamily: 'Georgia',
+                  fontSize: 24,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            SizedBox(
+              width: 46,
+              height: 46,
+              child: Material(
+                color: JoyeriaPalette.blush,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Mantén la zona de la joya visible y muévete lentamente.',
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Icon(
+                    Icons.question_mark_rounded,
+                    color: _espresso,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildCameraCard({
     required bool active,
@@ -358,14 +335,10 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
   }) {
     return Container(
       width: double.infinity,
-      height: 505,
       decoration: BoxDecoration(
-        color: const Color(0xFFF0E5D8),
+        color: JoyeriaPalette.blush,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: const Color(0xFFD9B87B),
-          width: 1.2,
-        ),
+        border: Border.all(color: JoyeriaPalette.stroke, width: 1.2),
         boxShadow: [
           BoxShadow(
             color: _espresso.withValues(alpha: 0.06),
@@ -398,9 +371,8 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
                   child: _ToggleButton(
                     enabled: _debugOverlay,
                     icon: Icons.my_location_rounded,
-                    onPressed: () => setState(
-                      () => _debugOverlay = !_debugOverlay,
-                    ),
+                    onPressed: () =>
+                        setState(() => _debugOverlay = !_debugOverlay),
                   ),
                 ),
 
@@ -410,18 +382,8 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
                   child: _ToggleButton(
                     enabled: _magnifierOn,
                     icon: Icons.search_rounded,
-                    onPressed: () => setState(
-                      () => _magnifierOn = !_magnifierOn,
-                    ),
-                  ),
-                ),
-
-                const Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 24,
-                  child: Center(
-                    child: _ViewModeSelector(),
+                    onPressed: () =>
+                        setState(() => _magnifierOn = !_magnifierOn),
                   ),
                 ),
               ],
@@ -437,11 +399,7 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.phone_iphone_rounded,
-            size: 40,
-            color: _muted,
-          ),
+          const Icon(Icons.phone_iphone_rounded, size: 40, color: _muted),
           const SizedBox(height: 16),
           const Text(
             'Prueba de collares no disponible en iOS por ahora',
@@ -459,100 +417,7 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
             'resuelve, collares está disponible en Android; aretes y '
             'pulseras siguen funcionando normal aquí.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _muted,
-              fontSize: 13.5,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ViewModeSelector extends StatelessWidget {
-  const _ViewModeSelector();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 202,
-      height: 66,
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBF6)
-            .withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(33),
-        border: Border.all(
-          color: Colors.white,
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              height: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFFB98217),
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFB98217)
-                        .withValues(alpha: 0.25),
-                    blurRadius: 12,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.videocam_rounded,
-                color: Colors.white,
-                size: 29,
-              ),
-            ),
-          ),
-
-          Container(
-            width: 1,
-            height: 31,
-            margin: const EdgeInsets.symmetric(
-              horizontal: 7,
-            ),
-            color: const Color(0xFFE3D9CD),
-          ),
-
-          Expanded(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(28),
-                onTap: () {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'La prueba desde una foto se agregará en el siguiente paso.',
-                      ),
-                    ),
-                  );
-                },
-                child: const SizedBox.expand(
-                  child: Icon(
-                    Icons.image_rounded,
-                    color: Color(0xFFBDB5AA),
-                    size: 27,
-                  ),
-                ),
-              ),
-            ),
+            style: TextStyle(color: _muted, fontSize: 13.5, height: 1.5),
           ),
         ],
       ),
@@ -564,109 +429,60 @@ class _TrackingStatusCard extends StatelessWidget {
   final TryOnState state;
   final JewelryCategory category;
 
-  const _TrackingStatusCard({
-    required this.state,
-    required this.category,
-  });
+  const _TrackingStatusCard({required this.state, required this.category});
 
   @override
   Widget build(BuildContext context) {
     final anchorFound =
-        state is TryOnActive &&
-        (state as TryOnActive).anchor != null;
-
+        state is TryOnActive && (state as TryOnActive).anchor != null;
     final title = _titleForState(anchorFound);
     final subtitle = _subtitleForState(anchorFound);
 
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(
-        minHeight: 112,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 18,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF8),
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(
-          color: const Color(0xFFE9D9C6),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF3A2419)
-                .withValues(alpha: 0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: JoyeriaPalette.surface,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: JoyeriaPalette.stroke),
       ),
       child: Row(
         children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: const BoxDecoration(
-              color: Color(0xFFF7EEDF),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              anchorFound
-                  ? Icons.diamond_outlined
-                  : Icons.center_focus_weak_rounded,
-              color: const Color(0xFFB98217),
-              size: 31,
-            ),
+          Icon(
+            anchorFound
+                ? Icons.check_circle_rounded
+                : Icons.center_focus_weak_rounded,
+            color: anchorFound ? const Color(0xFF748B6B) : JoyeriaPalette.rose,
+            size: 24,
           ),
-
-          const SizedBox(width: 17),
-
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF34281F),
-                    fontSize: 17,
+                    color: JoyeriaPalette.espresso,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-
-                const SizedBox(height: 6),
-
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF887466),
-                    fontSize: 14,
-                    height: 1.4,
+                    color: JoyeriaPalette.muted,
+                    fontSize: 11.5,
+                    height: 1.25,
                   ),
                 ),
               ],
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: anchorFound
-                  ? const Color(0xFF73935E)
-                  : const Color(0xFFB98217),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              anchorFound
-                  ? Icons.check_rounded
-                  : Icons.circle,
-              color: Colors.white,
-              size: anchorFound ? 19 : 9,
             ),
           ),
         ],
@@ -736,10 +552,7 @@ class _CameraLoadingView extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFF4E9DC),
-            Color(0xFFE9D8C5),
-          ],
+          colors: [Color(0xFFF4E9DC), Color(0xFFE9D8C5)],
         ),
       ),
       child: const Center(
@@ -769,8 +582,8 @@ class _ToggleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: enabled
-          ? const Color(0xFF35E07A).withValues(alpha: 0.9)
-          : Colors.black.withValues(alpha: 0.35),
+          ? JoyeriaPalette.rose.withValues(alpha: 0.96)
+          : JoyeriaPalette.espresso.withValues(alpha: 0.60),
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -778,11 +591,7 @@ class _ToggleButton extends StatelessWidget {
         child: SizedBox(
           width: 38,
           height: 38,
-          child: Icon(
-            icon,
-            size: 19,
-            color: enabled ? const Color(0xFF11331F) : Colors.white,
-          ),
+          child: Icon(icon, size: 19, color: Colors.white),
         ),
       ),
     );
@@ -813,19 +622,12 @@ class _CameraOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cameraService =
-        ref.watch(cameraServiceProvider);
+    final cameraService = ref.watch(cameraServiceProvider);
 
     return ValueListenableBuilder<CameraController?>(
-      valueListenable:
-          cameraService.controllerNotifier,
-      builder: (
-        context,
-        camController,
-        _,
-      ) {
-        if (camController == null ||
-            !camController.value.isInitialized) {
+      valueListenable: cameraService.controllerNotifier,
+      builder: (context, camController, _) {
+        if (camController == null || !camController.value.isInitialized) {
           return const _CameraLoadingView();
         }
 
@@ -835,10 +637,8 @@ class _CameraOverlay extends ConsumerWidget {
             // mismo marco en el que vienen normalizados los landmarks: por eso
             // se intercambian ancho y alto.
             final previewSize = camController.value.previewSize;
-            final imageWidth =
-                previewSize?.height ?? constraints.maxWidth;
-            final imageHeight =
-                previewSize?.width ?? constraints.maxHeight;
+            final imageWidth = previewSize?.height ?? constraints.maxWidth;
+            final imageHeight = previewSize?.width ?? constraints.maxHeight;
 
             // Una sola transformacion compartida por la vista previa y el
             // overlay, para que joya y camara no se desalineen en los bordes.
@@ -857,9 +657,7 @@ class _CameraOverlay extends ConsumerWidget {
                   child: SizedBox(
                     width: imageWidth,
                     height: imageHeight,
-                    child: CameraPreview(
-                      camController,
-                    ),
+                    child: CameraPreview(camController),
                   ),
                 ),
 
@@ -889,10 +687,8 @@ class _CameraOverlay extends ConsumerWidget {
             // alto del Stack, que aqui coincide con el area disponible.
             final centerX = fit.xOf(anchor!.position.x);
             final centerY = fit.yOf(anchor!.position.y);
-            final alignX =
-                (centerX / constraints.maxWidth) * 2 - 1;
-            final alignY =
-                (centerY / constraints.maxHeight) * 2 - 1;
+            final alignX = (centerX / constraints.maxWidth) * 2 - 1;
+            final alignY = (centerY / constraints.maxHeight) * 2 - 1;
 
             return Transform.scale(
               scale: _magnifierZoom,
@@ -919,9 +715,7 @@ class _CameraGuide extends StatelessWidget {
         child: SizedBox(
           width: 220,
           height: 220,
-          child: CustomPaint(
-            painter: _CameraGuidePainter(),
-          ),
+          child: CustomPaint(painter: _CameraGuidePainter()),
         ),
       ),
     );
@@ -953,23 +747,15 @@ class _CameraGuidePainter extends CustomPainter {
     path.lineTo(0, size.height);
     path.lineTo(corner, size.height);
 
-    path.moveTo(
-      size.width - corner,
-      size.height,
-    );
+    path.moveTo(size.width - corner, size.height);
     path.lineTo(size.width, size.height);
-    path.lineTo(
-      size.width,
-      size.height - corner,
-    );
+    path.lineTo(size.width, size.height - corner);
 
     canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(
-    covariant CustomPainter oldDelegate,
-  ) {
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
     return false;
   }
 }
@@ -990,10 +776,10 @@ class _ModelOverlay extends ConsumerWidget {
   /// Tamano en pantalla cuando la estrategia todavia no estima escala
   /// (aretes y collares).
   double get _fallbackSize => switch (piece.categoria) {
-        JewelryCategory.earring => 32,
-        JewelryCategory.necklace => 64,
-        JewelryCategory.bracelet => 72,
-      };
+    JewelryCategory.earring => 32,
+    JewelryCategory.necklace => 64,
+    JewelryCategory.bracelet => 72,
+  };
 
   /// Tamano de la pieza como multiplo de la medida anatomica que reporta la
   /// estrategia. Para pulseras, multiplos del ancho de la palma: una pulsera
@@ -1035,10 +821,10 @@ class _ModelOverlay extends ConsumerWidget {
   /// Tamano exterior de la pieza como multiplo de la medida que reporta la
   /// estrategia.
   double get _scaleFactor => switch (piece.categoria) {
-        JewelryCategory.bracelet => _jewelToPalm,
-        JewelryCategory.earring => _earringToInterocular,
-        _ => 1.0,
-      };
+    JewelryCategory.bracelet => _jewelToPalm,
+    JewelryCategory.earring => _earringToInterocular,
+    _ => 1.0,
+  };
 
   /// Diametro del miembro que la pieza rodea, en pixeles, para el occluder.
   /// Solo las pulseras rodean algo hoy; un arete cuelga del lobulo.
@@ -1070,8 +856,21 @@ class _ModelOverlay extends ConsumerWidget {
   /// pequeño.
   static const double _neckToShoulders = 0.36;
 
-
   bool get _isNecklace => piece.categoria == JewelryCategory.necklace;
+
+  /// Aretes colgados de la cabeza medida con la malla facial. **Solo
+  /// Android**: en iOS el arete sigue dibujándose como antes, con ML Kit Face.
+  EarringSetup? get _earringSetup {
+    if (piece.categoria != JewelryCategory.earring || !Platform.isAndroid) {
+      return null;
+    }
+    final punto = piece.puntoSujecion;
+    return EarringSetup(
+      hangs: piece.tipoArete?.hangs,
+      heightMm: piece.dimensionesMm.alto,
+      attachPoint: punto == null ? null : Vec3(punto[0], punto[1], punto[2]),
+    );
+  }
 
   /// Columna del cuello en pixeles, para collares.
   ///
@@ -1105,9 +904,9 @@ class _ModelOverlay extends ConsumerWidget {
   /// pulsera se lleva perpendicular a el, de ahi el cuarto de vuelta. Si en
   /// dispositivo la pieza sale girada 90 grados, este es el valor a tocar.
   double get _rollOffset => switch (piece.categoria) {
-        JewelryCategory.bracelet => math.pi / 2,
-        _ => 0,
-      };
+    JewelryCategory.bracelet => math.pi / 2,
+    _ => 0,
+  };
 
   /// Limites de seguridad: una deteccion mala no puede llenar la pantalla de
   /// joya ni encogerla hasta hacerla invisible.
@@ -1144,6 +943,7 @@ class _ModelOverlay extends ConsumerWidget {
           necklace: _isNecklace,
           neckDiameterPx: _neckColumnPx(fit, anchor),
           neckBasePx: _neckBasePx(fit, anchor),
+          earring: _earringSetup,
         ),
       ),
     );
@@ -1192,10 +992,7 @@ class _LandmarkDebugLayer extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Text(
                   _debugText(),
                   style: const TextStyle(
@@ -1236,6 +1033,20 @@ class _LandmarkDebugLayer extends StatelessWidget {
         ..write(
           'yaw ${a.yawRadians == null ? "-" : (a.yawRadians! * 180 / math.pi).toStringAsFixed(1)}deg',
         );
+      // Aretes con la malla facial: cabeceo de la cabeza, positivo mirando
+      // hacia abajo. El lóbulo está más atrás que el contorno de la cara, así
+      // que su altura en la imagen depende de él; sirve para calibrarlo.
+      final axes = a.headAxes;
+      if (axes != null) {
+        final cara = axes.z;
+        final pitch = math.atan2(
+          -cara.y,
+          math.sqrt(cara.x * cara.x + cara.z * cara.z),
+        );
+        buffer.write(
+          '   pitch ${(pitch * 180 / math.pi).toStringAsFixed(1)}deg',
+        );
+      }
     }
     return buffer.toString();
   }
@@ -1295,7 +1106,8 @@ class _LandmarkPainter extends CustomPainter {
 
       for (var i = 0; i < landmarks.length; i++) {
         // Se destacan los tres puntos de los que sale el anclaje de pulsera.
-        final isKey = isHand &&
+        final isKey =
+            isHand &&
             (i == BraceletStrategy.wristLandmark ||
                 i == BraceletStrategy.indexMcpLandmark ||
                 i == BraceletStrategy.pinkyMcpLandmark);
@@ -1330,6 +1142,28 @@ class _LandmarkPainter extends CustomPainter {
     // donde debe antes de fiarse de como sale girada la joya.
     final scale = a.scale;
     if (scale == null) return;
+
+    // Aretes con la malla facial: donde la cabeza invisible pone cada lóbulo.
+    // Es la referencia para calibrar `HeadModel.lobe` contra la oreja real.
+    final axes = a.headAxes;
+    if (axes != null && fit.imageHeight > 0) {
+      final lobePaint = Paint()..color = const Color(0xFFFFD166);
+      final aspect = fit.imageWidth / fit.imageHeight;
+      for (final side in const [-1, 1]) {
+        // Con la misma perspectiva que el render, para que el punto caiga
+        // donde se dibuja el arete también con la cabeza girada.
+        final p = headPointToImage(
+          local: a.lobeFor(side) ?? HeadModel.lobeFor(side),
+          origin: a.position,
+          width: scale,
+          axes: axes,
+          aspect: aspect,
+          tanHalfFrameWidth: mediapipeTanHalfWidth(aspect),
+        );
+        canvas.drawCircle(Offset(fit.xOf(p.x), fit.yOf(p.y)), 5, lobePaint);
+      }
+    }
+
     final length = fit.lengthOf(scale);
     canvas.drawLine(
       center,

@@ -16,3 +16,16 @@ abstract interface class LandmarkDetector {
 
   Future<void> dispose();
 }
+
+/// Un detector que además publica cada resultado apenas lo tiene, sin esperar
+/// a la siguiente llamada a [LandmarkDetector.detect].
+///
+/// Con petición y respuesta, el resultado de un frame solo sale con el frame
+/// siguiente: con la cámara frontal a ~15 por segundo eso son hasta 66 ms en
+/// los que la pose ya está calculada y no se usa (medido en el Galaxy A15,
+/// 2026-11-08). Con estos detectores [LandmarkDetector.detect] solo entrega
+/// el frame y devuelve [LandmarkFrame.empty]; lo detectado llega por
+/// [results], incluido un [LandmarkFrame.empty] cuando no se vio nada.
+abstract interface class PushesResults {
+  Stream<LandmarkFrame> get results;
+}

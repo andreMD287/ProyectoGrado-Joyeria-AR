@@ -2,12 +2,21 @@ import 'dart:math' as math;
 
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../../../core/math/geometry.dart';
+import '../../../../core/math/head_geometry.dart';
 import '../entities/anchor_pose.dart';
+import '../entities/head_observation.dart';
 import '../entities/landmark.dart';
 import '../entities/landmark_frame.dart';
 import 'tracking_strategy.dart';
 
 /// Aretes: ancla en el lóbulo.
+///
+/// Hay dos caminos según lo que entregue el detector:
+///
+/// - **Cabeza medida con la malla facial** ([LandmarkFrame.head], Android):
+///   ver [_fromHead]. Da la pose de toda la cabeza, y el render cuelga de ella
+///   los dos aretes y su oclusión.
+/// - **ML Kit Face** (iOS): lo que sigue, sin cambios.
 ///
 /// De frente, los landmarks de oreja de ML Kit son inestables (aparecen /
 /// desaparecen) y alternar izq/der hace que el modelo salte por toda la cara.
@@ -49,8 +58,10 @@ class EarringStrategy implements TrackingStrategy {
   @override
   JewelryCategory get category => JewelryCategory.earring;
 
+  /// `head`: en Android la malla facial de MediaPipe y en iOS ML Kit Face,
+  /// igual que antes (ver `createLandmarkDetector`).
   @override
-  DetectorKind get detectorKind => DetectorKind.face;
+  DetectorKind get detectorKind => DetectorKind.head;
 
   /// Fuerza el lado a anclar (0 = izquierdo, 1 = derecho), o vuelve al modo
   /// automático con `null`. Mientras hay un lado forzado, [_resolveSide]
@@ -71,8 +82,11 @@ class EarringStrategy implements TrackingStrategy {
   @override
   AnchorPose? computeAnchor(
     LandmarkFrame frame, {
-    double imageAspect = 1.0, // esta estrategia aun no estima escala ni roll
+    double imageAspect = 1.0,
   }) {
+    final head = frame.head;
+    if (head != null) return _fromHead(head, imageAspect);
+
     // ML Kit Face no entrega reconstruccion metrica, asi que esta estrategia
     // solo usa los landmarks de imagen.
     final landmarks = frame.landmarks;
@@ -134,6 +148,134 @@ class EarringStrategy implements TrackingStrategy {
       pitchRadians: headAngles == null ? null : _toPitchRadians(headAngles.x),
       confidence: lobe.point.visibility ?? 1,
     );
+  }
+
+  /// Pose de la cabeza a partir de la malla facial.
+  ///
+  /// - **Posición ([AnchorPose.position]):** el punto medio entre las mejillas
+  ///   234 y 454, que es el origen de la cabeza invisible (`HeadModel`).
+  /// - **Escala ([AnchorPose.scale]):** la distancia entre ellas **en 3D**, en
+  ///   fracciones del ancho del frame: no se encoge al girar la cabeza.
+  /// - **Orientación ([AnchorPose.headAxes]):** el eje x va de mejilla a
+  ///   mejilla por los puntos medidos, y la vertical sale de la matriz de
+  ///   transformación facial (o, si no llegó o no cuadra, del mentón a la
+  ///   frente). Así los lóbulos, que cuelgan de las mejillas, quedan atados a
+  ///   lo que se ve en la imagen.
+  ///
+  /// Es la regla de ADR-14: las direcciones del modelo 3D, los tamaños de la
+  /// imagen. De la matriz solo se toma la rotación: su traslación supone el
+  /// campo de visión de MediaPipe, no el de la cámara.
+  ///
+  /// Se dibujan los dos aretes y la oclusión decide cuál se ve, así que no hay
+  /// lado que bloquear. El lado elegido en la pantalla de preparación deja
+  /// solo ese.
+  AnchorPose? _fromHead(HeadObservation head, double imageAspect) {
+    final neg = head.negativeSide;
+    final pos = head.positiveSide;
+    if (neg == null || pos == null || imageAspect <= 0) return null;
+
+    Vec3 escena(Landmark p) => imageToScene(Vec3(p.x, p.y, p.z), imageAspect);
+    final deMejillaAMejilla = escena(pos) - escena(neg);
+    final ancho = deMejillaAMejilla.length;
+    if (ancho <= 0) return null;
+
+    final axes = _headAxes(head, deMejillaAMejilla, escena);
+    if (axes == null) return null;
+
+    // Para el overlay de diagnóstico: inclinación del eje x en pantalla (la y
+    // de la pantalla crece hacia abajo) y giro de la cara alrededor de la
+    // vertical, positivo hacia la derecha de la pantalla.
+    final roll = math.atan2(-axes.x.y, axes.x.x);
+    final cara = axes.z;
+    final yaw = math.atan2(cara.x, cara.z);
+
+    // Cada lóbulo, en el espacio de la cabeza, sobre el contorno medido de su
+    // lado (ver `HeadModel.lobeAlongContour`), corregido por el cabeceo
+    // (`HeadModel.lobePitchGain`): positivo mirando hacia abajo.
+    final origen = (escena(neg) + escena(pos)) * 0.5;
+    final pitch = math.atan2(-cara.y, math.sqrt(cara.x * cara.x + cara.z * cara.z));
+    final porCabeceo = Vec3(0, HeadModel.lobePitchGain * pitch, 0);
+    // Con la cabeza girada el contorno se ubica peor y se pasa poco a poco al
+    // lóbulo atado a las mejillas (ver `HeadModel.rigidLobeBlendStartDeg`).
+    final hacia = _smoothstep(
+      HeadModel.rigidLobeBlendStartDeg * math.pi / 180,
+      HeadModel.rigidLobeBlendEndDeg * math.pi / 180,
+      yaw.abs(),
+    );
+    Vec3 lobulo(int side) {
+      final rigido = HeadModel.lobeFor(side) + porCabeceo;
+      final contorno = head.contourFor(side);
+      if (contorno == null || hacia >= 1) return rigido;
+      final (arriba, abajo) = contorno;
+      final a = escena(arriba), b = escena(abajo);
+      final punto = a + (b - a) * HeadModel.lobeAlongContour;
+      final d = (punto - origen) * (1 / ancho);
+      final sobreContorno = Vec3(d.dot(axes.x), d.dot(axes.y), d.dot(axes.z)) +
+          HeadModel.lobeOffsetFor(side) +
+          porCabeceo;
+      return sobreContorno + (rigido - sobreContorno) * hacia;
+    }
+
+    final forced = _forcedSide;
+    return AnchorPose(
+      position: Vec3(
+        (neg.x + pos.x) / 2,
+        (neg.y + pos.y) / 2,
+        (neg.z + pos.z) / 2,
+      ),
+      rollRadians: roll,
+      scale: ancho,
+      yawRadians: yaw,
+      headAxes: axes,
+      earringSide: forced == null
+          ? null
+          // 0 = izquierda, 1 = derecha, de la persona.
+          : (forced == 0 ? head.leftEarSide : -head.leftEarSide),
+      lobeNegative: lobulo(-1),
+      lobePositive: lobulo(1),
+      confidence: 1,
+    );
+  }
+
+  /// Ejes de la cabeza: x de mejilla a mejilla con los puntos medidos, y la
+  /// vertical de la matriz si cuadra con ellos o, si no, del mentón a la
+  /// frente.
+  ///
+  /// **Por qué la x no sale de la matriz.** Con la cabeza girada, la matriz y
+  /// los puntos no coinciden en el giro: medido en dispositivo (2026-11-08),
+  /// la matriz daba 32° y el botón, colgado del lóbulo según ella, quedaba
+  /// ~9 mm hacia la nuca, fuera de donde la malla ponía la mejilla de ese
+  /// lado. Con la x por los puntos, el ±0,5 del modelo cae exactamente en las
+  /// mejillas medidas y el lóbulo se cuelga de ellas.
+  ///
+  /// La comprobación protege de una matriz con otra convención de ejes: su x
+  /// tiene que ir, como mucho a unos 45°, en el mismo sentido que la línea de
+  /// mejilla a mejilla.
+  static HeadAxes? _headAxes(
+    HeadObservation head,
+    Vec3 deMejillaAMejilla,
+    Vec3 Function(Landmark) escena,
+  ) {
+    final deMatriz = head.axes;
+    final x = deMejillaAMejilla.normalized();
+    if (deMatriz != null && deMatriz.x.dot(x) > _minMatrixAgreement) {
+      return HeadAxes.orthonormal(x, deMatriz.y);
+    }
+    final frente = head.points[HeadObservation.forehead];
+    final menton = head.points[HeadObservation.chin];
+    if (frente == null || menton == null) return null;
+    return HeadAxes.orthonormal(x, escena(frente) - escena(menton));
+  }
+
+  /// Coseno mínimo entre el eje x de la matriz y la línea de mejilla a
+  /// mejilla (unos 45°).
+  static const double _minMatrixAgreement = 0.7;
+
+  /// 0 hasta [a], 1 desde [b] y una curva suave entre los dos: el lóbulo no
+  /// salta al pasar de un cálculo al otro.
+  static double _smoothstep(double a, double b, double v) {
+    final t = ((v - a) / (b - a)).clamp(0.0, 1.0);
+    return t * t * (3 - 2 * t);
   }
 
   /// `headEulerAngleY` (giro lateral de cabeza) a radianes, para que el arete

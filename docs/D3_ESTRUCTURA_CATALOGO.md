@@ -41,6 +41,8 @@ Cada pieza se describe con los siguientes campos. Los tipos de anclaje están ac
 | `estado` | enum | Sí | `pendiente` \| `modelado` \| `validado` (avance de producción del modelo). |
 | `notas_material` | string | No | Aproximaciones aplicadas (p. ej. gema opaca en vez de transmisión — ver D1 §4.4). |
 | `orientacion_yaw_deg` | number | No | Corrección de giro sobre el eje vertical (grados) para modelos exportados con el frente hacia atrás. Por defecto `0`. Es un parche a nivel de catálogo, no reemplaza corregir el modelo en origen (D1). |
+| `tipo_arete` | enum | No (aretes) | `boton` \| `colgante` \| `aro`. Decide de dónde cuelga el modelo y si se balancea (D1 §4.8). Si falta, se deduce de la forma del modelo. |
+| `punto_sujecion` | `[x, y, z]` | No (aretes) | Punto del modelo que va en el lóbulo, en unidades del GLB y ya con `orientacion_yaw_deg` aplicado. Si falta, se usa el Empty `sujecion` del GLB o se deduce de la forma (D1 §4.8). |
 
 ### 2.1 Subesquema `dimensiones_mm`
 | Campo | Aplica a | Descripción |

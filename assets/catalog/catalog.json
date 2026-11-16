@@ -1,18 +1,27 @@
 {
   "version": 1,
-  "categorias": ["arete", "pulsera", "collar"],
+  "categorias": [
+    "arete",
+    "pulsera",
+    "collar"
+  ],
   "piezas": [
     {
       "id": "pulsera-eslabon-01",
-      "nombre": "Pulsera de eslabones clásica",
+      "nombre": "Pulsera tipo Cartier",
       "categoria": "pulsera",
       "tipo_anclaje": "muneca",
       "landmark_anclaje": 0,
       "modelo_glb": "assets/models/cartier.glb",
-      "foto": "assets/catalog/fotos/pulsera-eslabon-01.jpg",
-      "dimensiones_mm": { "alto": 8, "ancho": 180, "profundidad": 4, "diametro": 60 },
-      "material": "plata 925",
-      "descripcion": "Pulsera de eslabones, cierre de mosquetón.",
+      "foto": "assets/jewelry_home/06_pulsera_tipo_cartier.jpg",
+      "dimensiones_mm": {
+        "alto": 8,
+        "ancho": 180,
+        "profundidad": 4,
+        "diametro": 60
+      },
+      "material": "acabado dorado",
+      "descripcion": "Pulsera rígida de acabado dorado con detalles brillantes.",
       "estado": "pendiente",
       "notas_material": ""
     },
@@ -23,8 +32,13 @@
       "tipo_anclaje": "muneca",
       "landmark_anclaje": 0,
       "modelo_glb": "assets/models/pulsera_perlas_basica.glb",
-      "foto": "assets/catalog/fotos/pulsera-eslabon-01.jpg",
-      "dimensiones_mm": { "alto": 8, "ancho": 180, "profundidad": 4, "diametro": 60 },
+      "foto": "assets/jewelry_home/07_pulsera_de_perlas.jpg",
+      "dimensiones_mm": {
+        "alto": 8,
+        "ancho": 180,
+        "profundidad": 4,
+        "diametro": 60
+      },
       "material": "plata con perlas",
       "descripcion": "",
       "estado": "pendiente",
@@ -32,63 +46,110 @@
     },
     {
       "id": "arete-gota-01",
-      "nombre": "Arete gota con circón",
+      "nombre": "Arete botón de perla",
       "categoria": "arete",
       "tipo_anclaje": "lobulo",
+      "tipo_arete": "boton",
       "landmark_anclaje": null,
       "modelo_glb": "assets/models/arete_perla.glb",
-      "foto": "assets/catalog/fotos/arete-gota-01.jpg",
-      "dimensiones_mm": { "alto": 22, "ancho": 8, "profundidad": 6 },
-      "material": "plata 925 con circón",
-      "descripcion": "Arete colgante en forma de gota.",
+      "foto": "assets/jewelry_home/04_arete_de_perla.jpg",
+      "dimensiones_mm": {
+        "alto": 8,
+        "ancho": 8,
+        "profundidad": 15
+      },
+      "material": "plata con perla",
+      "descripcion": "Arete de botón con perla y poste.",
       "estado": "pendiente",
-      "notas_material": "Circón aproximado con material opaco especular (ver D1).",
+      "notas_material": "Perla con KHR_materials_specular (ver D1).",
       "orientacion_yaw_deg": 180
     },
     {
-      "id": "arete-juanes-01",
-      "nombre": "Arete de plata lisa",
+      "id": "arete-colgante-01",
+      "nombre": "Aretes circulares con circonita",
       "categoria": "arete",
       "tipo_anclaje": "lobulo",
+      "tipo_arete": "boton",
       "landmark_anclaje": null,
       "modelo_glb": "assets/models/Aretes_Juanes.glb",
-      "foto": "assets/catalog/fotos/arete-juanes-01.jpg",
-      "dimensiones_mm": { "alto": 20, "ancho": 8, "profundidad": 6 },
-      "material": "plata 925",
-      "descripcion": "Arete colgante liso.",
-      "estado": "pendiente",
-      "notas_material": "Dimensiones estimadas, pendientes de medir sobre el modelo real.",
+      "foto": "assets/jewelry_home/05_aretes_circulares_circonita.jpg",
+      "dimensiones_mm": {
+        "alto": 8,
+        "ancho": 8,
+        "profundidad": 13
+      },
+      "material": "plata con piedra",
+      "descripcion": "Aretes de botón con piedras brillantes y cierre de mariposa.",
+      "estado": "modelado",
+      "notas_material": "Piedra con KHR_materials_transmission; verificar cómo la dibuja el render AR (ver D1).",
       "orientacion_yaw_deg": 180,
       "orientacion_pitch_deg": 90
     },
     {
       "id": "collar-cadena-01",
-      "nombre": "Collar cadena fina con dije I",
+      "nombre": "Collar piedra de resina azul",
       "categoria": "collar",
       "tipo_anclaje": "cuello",
-      "landmark_anclaje": [11, 12],
+      "landmark_anclaje": [
+        11,
+        12
+      ],
       "modelo_glb": "assets/models/Collar1_Juanes.glb",
-      "foto": "assets/catalog/fotos/collar-cadena-01.jpg",
-      "dimensiones_mm": { "alto": 15, "ancho": 12, "profundidad": 3, "longitud": 420 },
-      "material": "oro 18k",
-      "descripcion": "Collar de cadena fina con dije central.",
+      "foto": "assets/jewelry_home/03_collar_resina_azul.jpg",
+      "dimensiones_mm": {
+        "alto": 15,
+        "ancho": 12,
+        "profundidad": 3,
+        "longitud": 420
+      },
+      "material": "piedras azules",
+      "descripcion": "Collar con piedras azules distribuidas a lo largo de la cadena.",
       "estado": "modelado",
       "notas_material": ""
     },
     {
       "id": "collar-cadena-02",
-      "nombre": "Collar cadena fina con dije II",
+      "nombre": "Cadena de plata",
       "categoria": "collar",
       "tipo_anclaje": "cuello",
-      "landmark_anclaje": [11, 12],
+      "landmark_anclaje": [
+        11,
+        12
+      ],
       "modelo_glb": "assets/models/Collar2_Juanes.glb",
-      "foto": "assets/catalog/fotos/collar-cadena-01.jpg",
-      "dimensiones_mm": { "alto": 15, "ancho": 12, "profundidad": 3, "longitud": 420 },
-      "material": "oro 18k",
-      "descripcion": "",
+      "foto": "assets/jewelry_home/02_cadena_de_plata.jpg",
+      "dimensiones_mm": {
+        "alto": 15,
+        "ancho": 12,
+        "profundidad": 3,
+        "longitud": 420
+      },
+      "material": "acabado plateado",
+      "descripcion": "Cadena de eslabones pulidos de acabado plateado.",
       "orientacion_yaw_deg": 90,
       "estado": "pendiente",
       "notas_material": ""
+    },
+    {
+      "id": "collar-circonita-foto-01",
+      "nombre": "Collar con dije transparente",
+      "categoria": "collar",
+      "tipo_anclaje": "cuello",
+      "landmark_anclaje": [
+        11,
+        12
+      ],
+      "modelo_glb": "assets/models/Collar3_Juanes.glb",
+      "foto": "assets/jewelry_home/01_collar_piedra_circonita.jpg",
+      "dimensiones_mm": {
+        "alto": 0,
+        "ancho": 0,
+        "profundidad": 0
+      },
+      "material": "Por confirmar",
+      "descripcion": "Collar con dije transparente de aspecto brillante.",
+      "estado": "modelo_3d_pendiente_calibracion_ar",
+      "notas_material": "Modelo exportado desde Collar3_Juanes.blend. Verificar la apariencia en el visor 3D y calibrar medidas reales antes de AR."
     }
   ]
 }

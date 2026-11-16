@@ -190,6 +190,11 @@ void main() {
       expect(obs.neck, isNull);
     });
 
+    test('se puede forzar sin espejo (iOS ya entrega el frame espejado)', () {
+      final obs = neckFrameFromNative(respuesta(), 270, mirror: false).neck!;
+      expect(obs.chin.x, closeTo(0.30, 1e-9));
+    });
+
     test('con el sensor a 90° no espeja', () {
       final obs = neckFrameFromNative(respuesta(), 90).neck!;
       expect(obs.chin.x, closeTo(0.30, 1e-9));
