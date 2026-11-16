@@ -56,6 +56,11 @@ class JewelryScene extends StatefulWidget {
   /// Giro fijo del catálogo para corregir modelos mal orientados al exportar.
   final double staticYawDeg;
 
+  /// Cabeceo fijo del catálogo, mismo caso que [staticYawDeg] pero para
+  /// modelos cuyo reposo (export) no queda mirando al frente sino hacia
+  /// arriba/abajo. Solo aplica a piezas sin eje 3D real (aretes).
+  final double staticPitchDeg;
+
   /// Rotación extra sobre el ángulo que reporta la estrategia (una pulsera se
   /// lleva perpendicular al eje del antebrazo).
   final double rollOffset;
@@ -107,6 +112,7 @@ class JewelryScene extends StatefulWidget {
     required this.targetSizePx,
     this.limbDiameterPx,
     this.staticYawDeg = 0,
+    this.staticPitchDeg = 0,
     this.rollOffset = 0,
     this.showOccluder = false,
     this.necklace = false,
@@ -1412,7 +1418,8 @@ class _JewelrySceneState extends State<JewelryScene> {
       jewel.rotation.z = -(anchor.rollRadians + widget.rollOffset);
       jewel.rotation.y =
           widget.staticYawDeg * math.pi / 180 + (anchor.yawRadians ?? 0);
-      jewel.rotation.x = anchor.pitchRadians ?? 0;
+      jewel.rotation.x =
+          widget.staticPitchDeg * math.pi / 180 + (anchor.pitchRadians ?? 0);
       return;
     }
 

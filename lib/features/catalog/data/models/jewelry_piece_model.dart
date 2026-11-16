@@ -14,6 +14,7 @@ class JewelryPieceModel {
   final String? material;
   final String? descripcion;
   final double orientacionYawDeg;
+  final double orientacionPitchDeg;
   final String? tipoArete;
   final List<double>? puntoSujecion;
 
@@ -27,6 +28,7 @@ class JewelryPieceModel {
     this.material,
     this.descripcion,
     this.orientacionYawDeg = 0,
+    this.orientacionPitchDeg = 0,
     this.tipoArete,
     this.puntoSujecion,
   });
@@ -43,6 +45,8 @@ class JewelryPieceModel {
       descripcion: json['descripcion'] as String?,
       orientacionYawDeg:
           (json['orientacion_yaw_deg'] as num?)?.toDouble() ?? 0,
+      orientacionPitchDeg:
+          (json['orientacion_pitch_deg'] as num?)?.toDouble() ?? 0,
       tipoArete: json['tipo_arete'] as String?,
       puntoSujecion: _punto(json['punto_sujecion']),
     );
@@ -73,6 +77,7 @@ class JewelryPieceModel {
       material: material,
       descripcion: descripcion,
       orientacionYawDeg: orientacionYawDeg,
+      orientacionPitchDeg: orientacionPitchDeg,
       tipoArete: EarringType.tryFromId(tipoArete),
       puntoSujecion: puntoSujecion,
     );

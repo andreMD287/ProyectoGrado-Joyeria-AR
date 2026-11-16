@@ -141,7 +141,11 @@ class FavoritesScreen extends ConsumerWidget {
                                   crossAxisCount: 2,
                                   mainAxisSpacing: 18,
                                   crossAxisSpacing: 15,
-                                  childAspectRatio: .67,
+                                  // Igual que en catalog_screen.dart: con .67
+                                  // la celda no alcanzaba para un nombre de 2
+                                  // líneas ("Collar con dije transparente"
+                                  // etc.), desbordaba ~11px abajo.
+                                  childAspectRatio: 0.64,
                                 ),
                             itemBuilder: (context, index) => PieceCard(
                               piece: selected[index],

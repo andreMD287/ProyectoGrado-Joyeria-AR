@@ -179,6 +179,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
   AngleStabilizer? _rollStabilizer;
   ScalarStabilizer? _scaleStabilizer;
   ScalarStabilizer? _yawStabilizer;
+  ScalarStabilizer? _pitchStabilizer;
 
   /// El eje 3D orienta la pieza y el ancho métrico decide su tamaño: sin
   /// filtrar, el ruido de la reconstrucción métrica se ve como temblor de
@@ -248,6 +249,9 @@ class TrackingRepositoryImpl implements TrackingRepository {
         _yawStabilizer = category == JewelryCategory.necklace
             ? ScalarStabilizer(minCutoff: 0.5, beta: 0.3)
             : ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
+        // Cabeceo de aretes: mismo afinado que el yaw, mismo origen (ángulos
+        // de cabeza de ML Kit Face, ver EarringStrategy).
+        _pitchStabilizer = ScalarStabilizer(minCutoff: 1.5, beta: 0.5);
         // Mucho mas suave que el resto: la `z` metrica de MediaPipe es la
         // señal mas ruidosa que consume el pipeline, y aqui no mueve un punto
         // sino la **orientacion** de la pieza, donde el ruido se ve como
@@ -359,6 +363,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
         (_sessionStabilizer ?? stabilizer).filter(anchor.position, tSeconds);
     final scale = anchor.scale;
     final yaw = anchor.yawRadians;
+    final pitch = anchor.pitchRadians;
     final axis = anchor.axis3D;
     final normal = anchor.palmNormal3D;
     final metricWidth = anchor.metricWidth;
@@ -371,6 +376,8 @@ class TrackingRepositoryImpl implements TrackingRepository {
               anchor.rollRadians,
       scale: scale == null ? null : _scaleStabilizer?.filter(scale, tSeconds),
       yawRadians: yaw == null ? null : _yawStabilizer?.filter(yaw, tSeconds),
+      pitchRadians:
+          pitch == null ? null : _pitchStabilizer?.filter(pitch, tSeconds),
       // Se filtra componente a componente y se vuelve a normalizar: el filtro
       // no conserva la longitud, y un eje que deje de ser unitario deformaria
       // la pieza al orientarla.
@@ -422,6 +429,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     _metricWidthStabilizer?.reset();
     _limbWidthStabilizer?.reset();
     _yawStabilizer?.reset();
+    _pitchStabilizer?.reset();
     _headXStabilizer?.reset();
     _headYStabilizer?.reset();
     _lobeNegStabilizer?.reset();

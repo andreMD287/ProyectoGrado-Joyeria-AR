@@ -937,6 +937,7 @@ class _ModelOverlay extends ConsumerWidget {
           targetSizePx: size,
           limbDiameterPx: _limbDiameterPx(fit, anchor),
           staticYawDeg: piece.orientacionYawDeg,
+          staticPitchDeg: piece.orientacionPitchDeg,
           rollOffset: _rollOffset,
           showOccluder: showOccluder,
           necklace: _isNecklace,
