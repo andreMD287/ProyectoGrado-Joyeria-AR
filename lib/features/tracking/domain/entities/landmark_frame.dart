@@ -1,6 +1,8 @@
 import '../../../../core/math/geometry.dart';
 import 'forearm_observation.dart';
+import 'head_observation.dart';
 import 'landmark.dart';
+import 'neck_observation.dart';
 
 /// Lo que un detector entrega para un frame.
 ///
@@ -37,11 +39,23 @@ class LandmarkFrame {
   /// a mano cuando llegan los landmarks.
   final ForearmObservation? forearm;
 
+  /// Cara y cuello medidos para collares, o `null` con cualquier otro
+  /// detector. Solo lo entrega `NeckTracker` (Android); en iOS los collares
+  /// siguen con los hombros de ML Kit Pose.
+  final NeckObservation? neck;
+
+  /// Cabeza medida con la malla facial para aretes, o `null` con cualquier
+  /// otro detector. Solo la entrega `NeckTracker` en modo cabeza (Android); en
+  /// iOS los aretes siguen con ML Kit Face.
+  final HeadObservation? head;
+
   const LandmarkFrame({
     this.landmarks = const [],
     this.worldLandmarks = const [],
     this.forearm,
     this.headEulerAnglesDeg,
+    this.neck,
+    this.head,
   });
 
   static const empty = LandmarkFrame();

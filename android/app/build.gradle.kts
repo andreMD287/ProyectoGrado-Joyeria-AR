@@ -30,6 +30,12 @@ android {
         versionName = flutter.versionName
     }
 
+    // MediaPipe abre los modelos por descriptor de archivo: comprimidos dentro
+    // del APK no se pueden abrir así.
+    androidResources {
+        noCompress.addAll(listOf("tflite", "task"))
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -41,4 +47,10 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Face Landmarker y segmentación para collares (NeckTracker). Misma
+    // versión que usa hand_landmarker, para no cargar dos copias de MediaPipe.
+    implementation("com.google.mediapipe:tasks-vision:0.10.29")
 }

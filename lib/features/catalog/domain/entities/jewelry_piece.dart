@@ -1,3 +1,4 @@
+import 'earring_type.dart';
 import 'jewelry_category.dart';
 
 /// Dimensiones reales de la pieza en milímetros (insumo de calibración de
@@ -35,6 +36,21 @@ class JewelryPiece {
   /// `catalog.json` / D3.
   final double orientacionYawDeg;
 
+  /// Corrección de cabeceo (grados) para modelos exportados mirando hacia
+  /// arriba/abajo en vez de al frente. 0 = sin corrección. Ver
+  /// `orientacion_pitch_deg` en `catalog.json` / D3.
+  final double orientacionPitchDeg;
+
+  /// Solo aretes: cómo se sujeta al lóbulo (`tipo_arete`). `null` si el
+  /// catálogo no lo dice; entonces se deduce de la forma del modelo.
+  final EarringType? tipoArete;
+
+  /// Solo aretes: punto del modelo que va en el lóbulo (`punto_sujecion`), en
+  /// unidades del GLB y ya con [orientacionYawDeg] aplicado. `null` si no se
+  /// indicó; entonces se busca un nodo `sujecion` en el GLB y, si tampoco hay,
+  /// se deduce de la forma (ver D1).
+  final List<double>? puntoSujecion;
+
   const JewelryPiece({
     required this.id,
     required this.nombre,
@@ -45,5 +61,8 @@ class JewelryPiece {
     this.material,
     this.descripcion,
     this.orientacionYawDeg = 0,
+    this.orientacionPitchDeg = 0,
+    this.tipoArete,
+    this.puntoSujecion,
   });
 }
