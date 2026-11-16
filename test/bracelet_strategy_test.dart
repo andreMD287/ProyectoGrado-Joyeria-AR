@@ -514,20 +514,15 @@ void main() {
       expect(anchor.scale, closeTo(0.04 * 2.0, 1e-9));
     });
 
-    test('el tamano sigue al escorzo, y eso se acepta a conciencia', () {
-      // Con la mano pronada 60 grados la palma se ve la mitad de ancha, y la
-      // pieza encoge en consecuencia.
-      //
-      // Se intento evitarlo con la reconstruccion metrica —primero por escala
-      // absoluta, luego por proporciones— y las dos veces salio peor: medido en
-      // dispositivo, el ancho metrico de la palma varia un 65% entre palma
-      // arriba y palma abajo, cuando es una distancia 3D que no puede cambiar.
-      // En esas mismas muestras el ancho en imagen solo variaba un 4%, porque
-      // en ambas poses el plano de la palma queda casi paralelo a la camara.
-      //
-      // Asi que se prefiere la senal estable aunque no sea invariante: encoge
-      // en poses de canto, que son ademas las que menos se usan para probarse
-      // una pulsera.
+    test(
+        'sin calibrar (primer frame de la sesion) el tamano sigue al escorzo '
+        'tal cual', () {
+      // Con la mano pronada 60 grados la palma se ve la mitad de ancha. En el
+      // primer frame de una sesion `_maxWidthToAxisRatio` todavia no tiene con
+      // que comparar (ver test de yaw "el primer frame calibra el maximo
+      // visto y da yaw cero"), asi que `cosYaw` sale 1 y no hay correccion
+      // posible: la pieza encoge en consecuencia. Desde el segundo frame ya
+      // calibrado si se corrige, acotado — ver los dos tests de abajo.
       const cos60 = 0.5;
       const sin60 = 0.8660254037844387;
       Vec3 girar(Vec3 v) => Vec3(v.x * cos60, v.y, -v.x * sin60);
@@ -540,6 +535,55 @@ void main() {
       )!;
 
       expect(girada.scale!, closeTo(frontal.scale! * cos60, 1e-6));
+    });
+
+    test(
+        'ya calibrada, una pronacion moderada se corrige de vuelta al tamano '
+        'de frente', () {
+      // Reportado en dispositivo (iPhone): la pulsera Cartier se ve mas chica
+      // vista desde la palma que desde el dorso. Con el maximo ya calibrado
+      // por un frame de frente, un giro de 20 grados (dentro del tope de
+      // _maxWidthCorrectionFactor = 1.2) se corrige por completo.
+      const cos20 = 0.9396926207859084;
+      const sin20 = 0.3420201433256687;
+      Vec3 girar(Vec3 v) => Vec3(v.x * cos20, v.y, -v.x * sin20);
+
+      final frontal = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 2.0),
+      )!;
+      final girada = strategy.computeAnchor(
+        proyectar(wristW, girar(indexW), girar(pinkyW), escala: 2.0),
+      )!;
+
+      expect(girada.scale!, closeTo(frontal.scale!, 1e-6));
+    });
+
+    test(
+        'ya calibrada, una pronacion fuerte se corrige solo hasta el tope '
+        'de seguridad', () {
+      // Girando 60 grados la correccion exacta pediria duplicar el ancho
+      // (1 / cos 60 = 2x); el tope de BraceletStrategy._maxWidthCorrectionFactor
+      // (1.2) evita eso para no reintroducir el problema ya descartado antes
+      // (reconstruir el tamano se desbocaba con el ruido de yaw al mover el
+      // telefono). La pieza queda mas grande que sin corregir, pero sigue sin
+      // llegar al tamano de frente.
+      const cos60 = 0.5;
+      const sin60 = 0.8660254037844387;
+      Vec3 girar(Vec3 v) => Vec3(v.x * cos60, v.y, -v.x * sin60);
+
+      final frontal = strategy.computeAnchor(
+        proyectar(wristW, indexW, pinkyW, escala: 2.0),
+      )!;
+      final sinCorregir = BraceletStrategy().computeAnchor(
+        proyectar(wristW, girar(indexW), girar(pinkyW), escala: 2.0),
+      )!;
+      final girada = strategy.computeAnchor(
+        proyectar(wristW, girar(indexW), girar(pinkyW), escala: 2.0),
+      )!;
+
+      expect(girada.scale!, greaterThan(sinCorregir.scale!));
+      expect(girada.scale!, lessThan(frontal.scale!));
+      expect(girada.scale!, closeTo(frontal.scale! * cos60 * 1.2, 1e-6));
     });
 
     test('la pieza cambia de tamano con la distancia', () {

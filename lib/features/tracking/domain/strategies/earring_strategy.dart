@@ -129,7 +129,10 @@ class EarringStrategy implements TrackingStrategy {
     final outward = _awayFromCenter(lobe.point.x, faceCenterX) *
         _outwardFactor(lobe.source) *
         interocular;
-    final down = 0.04 * interocular;
+    // Bajado de 0.04 a 0.02: reportado en dispositivo (2026-11-16, iPhone)
+    // el arete quedaba un poco por debajo del lóbulo real. Pendiente de
+    // seguir calibrando.
+    final down = 0.02 * interocular;
     final headAngles = frame.headEulerAnglesDeg;
 
     return AnchorPose(
@@ -399,10 +402,15 @@ class EarringStrategy implements TrackingStrategy {
   ///   (incluye pelo y algo de aire), así que su borde queda *por fuera* de
   ///   la oreja y hay que meterlo. Medido de frente en un Galaxy A15: el
   ///   borde caía a un 20% de la distancia interocular por fuera del lóbulo.
+  ///   **En iPhone ese -0.20 sobrecorregía**: reportado en dispositivo
+  ///   (2026-11-16) con el arete quedando sobre la mejilla, bien adentro del
+  ///   lóbulo real — el margen del bbox de ML Kit Face no es igual entre
+  ///   Android e iOS. Se baja a -0.05 como primer ajuste; sigue pendiente de
+  ///   calibrar más fino en dispositivo.
   /// - **Oreja y mejilla:** el landmark de oreja de ML Kit cae en el centro
   ///   de la oreja, así que ahí sí hay que separarse hacia el lóbulo.
   static double _outwardFactor(_LobeSource source) => switch (source) {
-        _LobeSource.boundingBox => -0.20,
+        _LobeSource.boundingBox => -0.05,
         _LobeSource.cheek || _LobeSource.ear => 0.08,
       };
 

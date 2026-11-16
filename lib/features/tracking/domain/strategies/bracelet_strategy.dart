@@ -127,6 +127,12 @@ class BraceletStrategy implements TrackingStrategy {
   /// pérdida real del brazo.
   static const int _holdForearmFrames = 8;
 
+  /// Tope del factor con que se reexpande `palmWidth` al corregir el escorzo
+  /// de pronacion/supinacion (ver `stableWidth` en [computeAnchor]). Sin
+  /// tope, una estimacion de `yawRadians` ruidosa cerca de perfil puede
+  /// disparar la correccion; acotado, el peor caso es una pulsera hasta un
+  /// 20% mas grande, no una que crece sin limite.
+  static const double _maxWidthCorrectionFactor = 1.2;
 
   BraceletStrategy({
     this.forearmOffset = 0.20,
@@ -254,41 +260,47 @@ class BraceletStrategy implements TrackingStrategy {
       axisLength: axisLength,
     );
 
-    // Tamano estable: `palmWidth` se encoge con el mismo giro que ya
-    // representa `yawRadians` (es la señal que usamos para estimarlo). Si el
-    // tamano del overlay tambien usara `palmWidth` tal cual, la pulsera se
-    // encogeria dos veces por el mismo giro: una por la rotacion 3D real del
-    // modelo, y otra porque el widget completo se dibuja mas chico. Se
-    // reconstruye el ancho "de frente" con el largo de antebrazo actual (que
-    // no cambia con este giro) y la relacion mas ancha vista en la sesion —
-    // eso sigue la distancia a la camara sin heredar el encogimiento del yaw.
-    // Ancho de la palma "de frente", que es lo que fija el tamano de la pieza.
+    // Tamano aparente de la pieza: se mide **sobre la imagen**, que es la
+    // unica senal estable (ver nota historica abajo sobre por que no se usa
+    // la reconstruccion metrica). Pero el ancho de imagen si se escorza un
+    // poco al pronar/supinar la muneca (palma vs dorso hacia la camara): en
+    // iOS, sin ningun dato 3D, no hay forma de distinguir ese escorzo de un
+    // alejamiento real de la camara.
     //
-    // Se obtiene multiplicando el largo del antebrazo **en la imagen** por la
-    // proporcion anatomica medida en 3D. Funciona porque ninguno de los dos se
-    // escorza al girar la muneca: el largo del antebrazo es el propio eje de
-    // giro, y la proporcion es un cociente de distancias reales.
-    //
-    // Antes esa proporcion se calibraba con el **maximo visto en la sesion**,
-    // y ese heuristico se descalibraba en cuanto cambiaba el angulo de camara:
-    // la pieza cambiaba de tamano y de sitio al mover el telefono, que es el
-    // problema reportado en dispositivo. Sin datos metricos se cae a el.
-    // Tamano aparente de la pieza: se mide **sobre la imagen**, que es la unica
-    // senal estable.
-    //
-    // Se intento derivarlo de la reconstruccion metrica, primero por escala
-    // absoluta y despues por proporciones, y las dos veces salio peor. Medido
-    // en dispositivo (2026-09-19, 302 muestras en dos poses): el ancho metrico
-    // de la palma pasa de 7,3 cm con la palma hacia arriba a 4,4 cm con la
-    // palma hacia abajo, un 65% de diferencia en una distancia 3D que es una
-    // propiedad fisica de la mano y no puede cambiar. MediaPipe reconstruye mal
-    // la pose pronada. En esas mismas muestras el ancho en imagen solo varia un
-    // 4%.
+    // Se corrige con el mismo `yawRadians` que ya se calcula para orientar la
+    // pieza: `cos(yawRadians)` es cuanto se encogio `palmWidth` por el giro
+    // (1 de frente, hacia 0 de perfil), asi que dividir por el devuelve el
+    // ancho "de frente" estimado. **Acotada a `_maxWidthCorrectionFactor`**
+    // porque la version anterior de esta idea (reconstruir con
+    // `_maxWidthToAxisRatio`, ver nota abajo) sin tope se desbocaba con el
+    // ruido de `yawRadians` y cambiaba de tamano al mover el telefono — aqui
+    // el limite mantiene el reves acotado aunque la estimacion de giro falle.
+    // Pendiente de confirmar en dispositivo (reportado: pulsera Cartier se ve
+    // mas chica desde la palma en iPhone).
+    final cosYaw = math.cos(yawRadians).clamp(
+          1 / _maxWidthCorrectionFactor,
+          1.0,
+        );
+    final stableWidth = palmWidth / cosYaw;
+
+    // Nota historica: se intento reconstruir este mismo ancho "de frente"
+    // multiplicando el largo de antebrazo (no se escorza con este giro) por
+    // la relacion mas ancha vista en la sesion (`_maxWidthToAxisRatio`) o por
+    // la proporcion anatomica en 3D. Las dos veces salio peor: el heuristico
+    // del maximo se descalibraba en cuanto cambiaba el angulo de camara (la
+    // pieza cambiaba de tamano y de sitio al mover el telefono, reportado en
+    // dispositivo), y la reconstruccion metrica fallaba porque MediaPipe
+    // reconstruye mal la pose pronada — medido en dispositivo (2026-09-19,
+    // 302 muestras en dos poses): el ancho metrico de la palma pasa de 7,3 cm
+    // con la palma hacia arriba a 4,4 cm con la palma hacia abajo (65% de
+    // diferencia en una distancia 3D que no puede cambiar), mientras el ancho
+    // en imagen solo variaba un 4% en esas mismas muestras — de ahi que la
+    // correccion de arriba parta del ancho de imagen y no de la reconstruccion
+    // metrica.
     //
     // La regla que deja esto, y que ya se habia insinuado con la profundidad:
     // de la reconstruccion metrica sirven **las direcciones**, no las
     // distancias — ni absolutas ni en cociente.
-    final stableWidth = palmWidth;
 
     return AnchorPose(
       position: position,
