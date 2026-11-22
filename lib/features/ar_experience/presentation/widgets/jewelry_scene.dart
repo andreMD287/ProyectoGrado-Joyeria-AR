@@ -776,6 +776,7 @@ class _JewelrySceneState extends State<JewelryScene> {
           ? model
           : (await three.GLTFLoader().fromBytes(widget.modelBytes))?.scene;
       if (instancia == null) continue;
+      _materialesConIdPropio(instancia);
       _limitarMetalicidad(instancia, hasEnvironment: hasEnvironment);
       _gemasSinTransmision(instancia);
 
@@ -1016,6 +1017,28 @@ class _JewelrySceneState extends State<JewelryScene> {
     }
 
     model.traverse((object) => ajustar(object.material));
+  }
+
+  /// Da a cada material de [model] un `id` nuevo, del contador de este isolate.
+  ///
+  /// `GLTFLoader.fromBytes` arma los GLB en otro isolate (`compute`), donde el
+  /// contador de `Material.id` arranca de cero: cada carga trae materiales con
+  /// los mismos `id` (0, 1, …). El renderer decide por `id` si recalcula el
+  /// plano de recorte y si vuelve a subir los uniforms (`_currentMaterialId`),
+  /// y ordena juntos los materiales con el mismo `id`. Dibujado justo después
+  /// del otro, un arete salía con el plano de recorte del primero: el botón de
+  /// la oreja izquierda desaparecía entero, o asomaba solo el poste con un
+  /// plano viejo (visto en dispositivo, 2026-11-22).
+  static void _materialesConIdPropio(three.Object3D model) {
+    void renumerar(three.Material? material) {
+      if (material is three.GroupMaterial) {
+        material.children.forEach(renumerar);
+      } else if (material != null) {
+        material.id = three.materialId++;
+      }
+    }
+
+    model.traverse((object) => renumerar(object.material));
   }
 
   /// Pone [recorte] en todos los materiales de [model]: se dibuja solo lo que
