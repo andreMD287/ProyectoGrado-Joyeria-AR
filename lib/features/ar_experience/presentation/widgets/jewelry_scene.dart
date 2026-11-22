@@ -11,6 +11,7 @@ import '../../../../core/math/head_geometry.dart';
 import '../../../../core/math/necklace_geometry.dart';
 import '../../../../core/math/pendulum.dart';
 import '../../../../core/math/ring_geometry.dart';
+import '../../../../core/metrics/tracking_metrics.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 
 /// Lo que la escena necesita de un arete para colgarlo de la cabeza.
@@ -1229,6 +1230,13 @@ class _JewelrySceneState extends State<JewelryScene> {
       wire.visible = widget.showOccluder;
     }
     _applyAnchor();
+    if (kMetrics) {
+      TrackingMetrics.instance.anclaEnEscena(
+        widget.anchor,
+        widget.fit,
+        MediaQuery.devicePixelRatioOf(context),
+      );
+    }
   }
 
   /// Campo de visión vertical que corresponde a [_hfovDeg] con este aspecto.

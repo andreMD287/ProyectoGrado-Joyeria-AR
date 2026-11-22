@@ -15,10 +15,12 @@ import '../../../catalog/domain/entities/jewelry_piece.dart';
 import '../../../catalog/presentation/controllers/catalog_controller.dart';
 import '../../../../core/math/geometry.dart';
 import '../../../../core/math/head_geometry.dart';
+import '../../../../core/metrics/tracking_metrics.dart';
 import '../../../tracking/domain/entities/anchor_pose.dart';
 import '../../../tracking/domain/entities/landmark.dart';
 import '../../../tracking/domain/strategies/bracelet_strategy.dart';
 import '../controllers/try_on_controller.dart';
+import '../widgets/ec03_protocol_overlay.dart';
 import '../widgets/jewelry_scene.dart';
 
 class TryOnScreen extends ConsumerWidget {
@@ -689,6 +691,9 @@ class _CameraOverlay extends ConsumerWidget {
                     fit: fit,
                     fps: fps,
                   ),
+
+                // Solo con --dart-define=METRICS=true (escenario EC-03).
+                if (kMetrics) const Ec03ProtocolOverlay(),
               ],
             );
 

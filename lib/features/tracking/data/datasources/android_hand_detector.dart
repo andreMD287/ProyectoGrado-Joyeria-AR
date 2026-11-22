@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart' as hl;
 
 import '../../../../core/math/geometry.dart';
+import '../../../../core/metrics/tracking_metrics.dart';
 import '../../../../core/vision/forearm_probe.dart';
 import '../../domain/entities/landmark.dart';
 import '../../domain/entities/landmark_frame.dart';
@@ -69,6 +70,8 @@ class AndroidHandDetector implements LandmarkDetector {
   }
 
   void _onHands(List<hl.Hand> hands) {
+    // Llega un resultado por fotograma procesado, también sin mano.
+    if (kMetrics) TrackingMetrics.instance.resultadoFifo();
     if (hands.isEmpty) {
       _latest = LandmarkFrame.empty;
       _latestAt = DateTime.now();

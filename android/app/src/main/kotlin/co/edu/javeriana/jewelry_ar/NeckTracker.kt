@@ -111,7 +111,15 @@ class NeckTracker(private val context: Context) :
         private const val RESULT_MAX_AGE_MS = 500L
     }
 
-    private class Frame(val nv: ByteArray, val w: Int, val h: Int, val stride: Int, val rotation: Int)
+    /**
+     * [id]: número de fotograma que manda Dart solo cuando se compila con
+     * `METRICS=true` (escenario EC-03). Se devuelve tal cual con el resultado
+     * para saber de qué fotograma salió; no cambia nada más.
+     */
+    private class Frame(
+        val nv: ByteArray, val w: Int, val h: Int, val stride: Int, val rotation: Int,
+        val id: Long? = null,
+    )
 
     private val faceExec = Executors.newSingleThreadExecutor { r -> Thread(r, "neck-face") }
 
@@ -201,7 +209,8 @@ class NeckTracker(private val context: Context) :
                     result.success(null)
                     return
                 }
-                synchronized(pendingLock) { pending = Frame(bytes, w, h, stride, rotation) }
+                val frameId = (call.argument<Any>("frameId") as? Number)?.toLong()
+                synchronized(pendingLock) { pending = Frame(bytes, w, h, stride, rotation, frameId) }
                 if (faceBusy.compareAndSet(false, true)) faceExec.execute { drain() }
                 // Con aretes el resultado sale por el `EventChannel`.
                 if (headMode && sink != null) {
@@ -317,7 +326,8 @@ class NeckTracker(private val context: Context) :
             }
             if (out != null && active) {
                 seq++
-                val withSeq = out + ("seq" to seq)
+                val withSeq = out + ("seq" to seq) +
+                    (f.id?.let { mapOf("frameId" to it) } ?: emptyMap())
                 latest = withSeq
                 latestAt = SystemClock.uptimeMillis()
                 if (headMode) {

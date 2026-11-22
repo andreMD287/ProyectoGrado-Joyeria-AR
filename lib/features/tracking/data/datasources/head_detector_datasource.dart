@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show EventChannel, MethodChannel;
 
 import '../../../../core/math/head_geometry.dart';
+import '../../../../core/metrics/tracking_metrics.dart';
 import '../../domain/entities/head_observation.dart';
 import '../../domain/entities/landmark.dart';
 import '../../domain/entities/landmark_frame.dart';
@@ -46,6 +47,10 @@ class HeadDetectorDataSource implements LandmarkDetector, PushesResults {
   Stream<LandmarkFrame> get results =>
       _events.receiveBroadcastStream().map((event) {
         if (event is! Map) return LandmarkFrame.empty;
+        if (kMetrics) {
+          TrackingMetrics.instance
+              .resultadoConId((event['frameId'] as num?)?.toInt());
+        }
         return headFrameFromNative(
           event.cast<String, Object?>(),
           _orientation,
@@ -63,6 +68,8 @@ class HeadDetectorDataSource implements LandmarkDetector, PushesResults {
       'height': frame.height,
       'stride': plane.bytesPerRow,
       'rotation': sensorOrientation,
+      // Solo con METRICS: el nativo lo devuelve con el resultado (EC-03).
+      if (kMetrics) 'frameId': TrackingMetrics.instance.despachoEnCurso,
     });
     return LandmarkFrame.empty;
   }
