@@ -52,12 +52,20 @@ class AndroidHandDetector implements LandmarkDetector {
   /// resultados que llegan después por el stream.
   int _orientation = 0;
 
+  /// **En CPU, no en GPU.** `create` crea el landmarker de forma síncrona, en
+  /// el hilo de la interfaz. Con el delegado GPU eso tardaba 11–14 s en el
+  /// Galaxy A15, en **cada** entrada a pulseras, con la app congelada; en CPU
+  /// tarda ~0,1 s (medido el 2026-11-22). Y no se pierde nada: con la medición
+  /// EC-03 la detección quedó en ~330 ms contra ~370 en GPU, con el mismo
+  /// ritmo de un resultado cada ~218 ms. Es el mismo caso que la malla facial
+  /// en `NeckTracker.kt`: en este teléfono la GPU, compartida con el render
+  /// 3D y la cámara, no rinde más que la CPU.
   @override
   Future<void> initialize() async {
     final plugin = hl.HandLandmarkerPlugin.create(
       numHands: 1,
       minHandDetectionConfidence: 0.6,
-      delegate: hl.HandLandmarkerDelegate.gpu,
+      delegate: hl.HandLandmarkerDelegate.cpu,
     );
     _plugin = plugin;
     _subscription = plugin.landmarkStream.listen(
