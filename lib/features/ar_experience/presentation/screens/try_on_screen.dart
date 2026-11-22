@@ -24,7 +24,11 @@ import '../widgets/jewelry_scene.dart';
 class TryOnScreen extends ConsumerWidget {
   final String pieceId;
 
-  const TryOnScreen({super.key, required this.pieceId});
+  /// Parámetro de consulta `ear` de la ruta (`'left'`, `'right'` o `null` =
+  /// automático), puesto por `TryOnPrepareScreen` para aretes.
+  final String? ear;
+
+  const TryOnScreen({super.key, required this.pieceId, this.ear});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -59,7 +63,7 @@ class TryOnScreen extends ConsumerWidget {
             return const Center(child: Text('Pieza no encontrada.'));
           }
 
-          return _TryOnBody(piece: piece);
+          return _TryOnBody(piece: piece, ear: ear);
         },
       ),
     );
@@ -68,8 +72,9 @@ class TryOnScreen extends ConsumerWidget {
 
 class _TryOnBody extends ConsumerStatefulWidget {
   final JewelryPiece piece;
+  final String? ear;
 
-  const _TryOnBody({required this.piece});
+  const _TryOnBody({required this.piece, this.ear});
 
   @override
   ConsumerState<_TryOnBody> createState() => _TryOnBodyState();
@@ -131,6 +136,12 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
     if (_started || !mounted) return;
 
     _started = true;
+
+    // Lado de oreja de la ruta, antes de que el controlador se lo pase a la
+    // estrategia. Se escribe siempre, también `null`, para no arrastrar el
+    // lado forzado de una sesión anterior.
+    ref.read(earringPreferredSideProvider.notifier).state =
+        earringSideFromQuery(widget.ear);
 
     await ref.read(tryOnControllerProvider.notifier).start(piece.categoria);
   }

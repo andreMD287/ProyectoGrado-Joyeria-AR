@@ -55,3 +55,13 @@ final trackingRepositoryProvider = Provider<TrackingRepository>((ref) {
 /// (`0` = izquierdo, `1` = derecho, `null` = automático). Vive aquí para que
 /// la UI y [TryOnController] compartan el mismo valor sin acoplarse entre sí.
 final earringPreferredSideProvider = StateProvider<int?>((ref) => null);
+
+/// Traduce el parámetro de consulta `ear` de `/try-on/:pieceId` (lo pone
+/// `TryOnPrepareScreen`) al valor de [earringPreferredSideProvider]:
+/// `'left'` → 0 y `'right'` → 1 (oreja izquierda/derecha de la persona, como
+/// en `EarringStrategy`); `null` o cualquier otro valor → `null` (automático).
+int? earringSideFromQuery(String? ear) => switch (ear) {
+      'left' => 0,
+      'right' => 1,
+      _ => null,
+    };

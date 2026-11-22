@@ -61,8 +61,10 @@ final appRouter = GoRouter(
 
     GoRoute(
       path: '/try-on/:pieceId',
-      builder: (context, state) =>
-          TryOnScreen(pieceId: state.pathParameters['pieceId']!),
+      builder: (context, state) => TryOnScreen(
+        pieceId: state.pathParameters['pieceId']!,
+        ear: state.uri.queryParameters['ear'],
+      ),
     ),
   ],
 );
