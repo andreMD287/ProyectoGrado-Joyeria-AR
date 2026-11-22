@@ -1,0 +1,124 @@
+# EC-03: escenario de calidad del SDD (SRS RD-02 latencia percibida <= 250 ms, RD-07 error de anclaje <= 40 px).
+# Fecha 2026-11-22. Samsung Galaxy A15 (SM-A155M, Android 16, compilación BP4A.251205.006.A155MUBSCEZH3).
+# Modo profile, con --dart-define=METRICS=true. Rama medicion-ec03, a partir de main d38e611. Estabilización activa (One Euro del proyecto, sin cambios).
+# Condiciones: interior con luz artificial. Pulsera: "Pulsera de perlas básica", cámara trasera, muñeca a ~40 cm. Aretes: "Arete botón de perla", cámara frontal, detección automática de oreja.
+#
+# Protocolo (3 corridas por categoría, cada una en su propia sesión y su propio CSV):
+#   1. flutter run --profile --dart-define=METRICS=true -d <dispositivo>
+#   2. Abrir la pieza -> Probar con AR. Con la joya ya puesta, tocar «Iniciar medición EC-03» (solo aparece con METRICS).
+#   3. Seguir la guía en pantalla: QUIETO 10 s (mano/cabeza y teléfono quietos), luego MUEVE 20 s
+#      (pulsera: la mano de lado a lado y arriba-abajo, 10-15 cm, un vaivén por segundo; aretes: girar la cabeza ~30° a cada lado y asentir, un movimiento por segundo).
+#   4. Cuando diga «Listo», tocar «Finalizar prueba» (cierra el CSV). Volver a entrar para la siguiente corrida.
+#   5. Sacar los CSV: adb shell run-as co.edu.javeriana.jewelry_ar ls app_flutter
+#                     adb exec-out run-as co.edu.javeriana.jewelry_ar cat app_flutter/<archivo>.csv > <archivo>.csv
+#   6. Reporte: dart run tool/ec03_reporte.dart docs/evidencias/ec03/*.csv
+#
+# Resultados (de la salida del script, abajo):
+#   Pulsera (Android, manos MediaPipe en el isolate raíz), 3 corridas:
+#     RD-07: p95 2.9 px en reposo y 16.2 px en movimiento (px lógicos) -> cumple. En px físicos el p95 en movimiento es 45.7 px.
+#     RD-02: detección 370 ms + espera de muestreo 0 ms + retardo del filtro 139 ms = 509 ms -> NO cumple.
+#            Con resultado->pose (206 ms, la espera hasta el siguiente fotograma) y pose->dibujo (11 ms): 726 ms.
+#   Aretes (Android, malla facial en el isolate raíz), 3 corridas:
+#     RD-07: p95 0.8 px en reposo y 3.3 px en movimiento -> cumple.
+#     RD-02: detección 96 ms + espera de muestreo 0 ms + retardo del filtro 68 ms = 164 ms -> cumple. Cadena medida completa: 175 ms.
+#     15.3 actualizaciones de cabeza por segundo; 95.6 ms por detección (p95 128.9).
+#
+# Para interpretar las cifras:
+#   - "Error de anclaje" es, como se definió para esta medición, la distancia entre el ancla filtrada y la sin filtrar
+#     (salida de la estrategia), proyectadas a la pantalla con el mismo PreviewFit de la escena. No es el error contra
+#     un punto anatómico de referencia medido a mano: eso no se obtiene por software.
+#   - Unidad de RD-07: el script da px lógicos (los del PreviewFit) y físicos (x devicePixelRatio = 2.813 en este
+#     teléfono). Con px físicos la pulsera en movimiento pasa de 40 (p95 45.7). Hay que fijar en el SRS cuál vale.
+#   - Aretes: el ancla es el origen de la cabeza (punto medio entre los puntos 234 y 454 de la malla). Los lóbulos y
+#     los ejes de la cabeza tienen sus propios filtros, que no entran en estas cifras.
+#   - Detección de la pulsera (370 ms): desde que se entrega el fotograma al plugin de manos hasta que su resultado
+#     llega a Dart. Incluye la conversión YUV->RGB del plugin, MediaPipe y la entrega por el EventChannel. Con un
+#     despacho cada ~217 ms (~4.6 Hz) quedan dos fotogramas en vuelo. El plugin no identifica el fotograma de cada
+#     resultado: se emparejaron por orden y el script verificó en cada corrida que no hubo descartes (sin crecimiento
+#     de despachos-resultados y desfase +1 refutado por 18-21 resultados).
+#   - Aretes: el nativo devuelve el número de fotograma con el resultado, así que el emparejamiento es exacto.
+#   - "Espera de muestreo" (t_dispatch - t_frame) es ~0 porque los fotogramas que llegan con el detector ocupado se
+#     descartan, no se encolan. La espera que sí pesa en la pulsera es resultado->pose: el resultado espera al
+#     siguiente fotograma para convertirse en pose.
+#   - No medible por software: la latencia del sensor a Dart y la de la pantalla. t_draw es el fin del frame de
+#     Flutter que reconstruyó la escena; la textura 3D puede presentarse uno o dos vsync después.
+#   - Se descartaron 2 sesiones previas que no están aquí: una prueba de humo y una corrida sin la guía en pantalla,
+#     cuyas fases contadas de memoria no coincidían con el protocolo (quieto de ~10 a ~22 s y movimiento de 23 a 50 s).
+#   - iOS no se midió.
+#
+# Salida completa de: dart run tool/ec03_reporte.dart docs/evidencias/ec03/*.csv
+EC-03 — reporte de 6 corrida(s)
+Tramos desde «Iniciar medición» (o desde la primera pose si la corrida no la usó): reposo 0.5–9.5 s, movimiento 10.5–29.5 s.
+Tiempos en ms; error de anclaje en píxeles lógicos (px) y físicos (px fís. = px × devicePixelRatio).
+
+========================================================================
+Categoría: bracelet (android) — 3 corrida(s)
+========================================================================
+- ec03_bracelet_20261122_160330.csv: profile, detector raiz, emparejamiento fifo, tramos desde inicio de la medición, 132 poses en la ventana (226 en total), velocidad mediana del ancla filtrada: reposo 5 px/s, movimiento 23 px/s.
+  ! emparejamiento por orden verificado: sin crecimiento de despachos−resultados y desfase +1 refutado por 21 resultado(s).
+- ec03_bracelet_20261122_160448.csv: profile, detector raiz, emparejamiento fifo, tramos desde inicio de la medición, 132 poses en la ventana (230 en total), velocidad mediana del ancla filtrada: reposo 5 px/s, movimiento 27 px/s.
+  ! emparejamiento por orden verificado: sin crecimiento de despachos−resultados y desfase +1 refutado por 19 resultado(s).
+- ec03_bracelet_20261122_160602.csv: profile, detector raiz, emparejamiento fifo, tramos desde inicio de la medición, 134 poses en la ventana (201 en total), velocidad mediana del ancla filtrada: reposo 3 px/s, movimiento 44 px/s.
+  ! emparejamiento por orden verificado: sin crecimiento de despachos−resultados y desfase +1 refutado por 18 resultado(s).
+
+RD-07 — error de anclaje (distancia filtrada vs. sin filtrar):
+  reposo      n= 123  media 1.1 px (3.0 px fís.)  p95 2.9 px (8.2)  máx 5.2 px (14.7)  CUMPLE con p95 ≤ 40 px
+  movimiento  n= 261  media 6.8 px (19.1 px fís.)  p95 16.2 px (45.7)  máx 28.0 px (78.7)  CUMPLE con p95 ≤ 40 px
+
+RD-02 — tramos de latencia (todas las poses de los dos tramos):
+  espera de muestreo (dispatch−frame) n= 398  media    0.0  p95    0.0  mediana    0.0
+  detección (result−dispatch)        n= 380  media  370.0  p95  433.4  mediana  370.2  (un valor por resultado)
+  resultado→pose (pose−result)       n= 398  media  205.7  p95  358.4  mediana  201.4  (manos: incluye esperar el siguiente fotograma)
+  pose→dibujo (draw−pose)            n= 319  media   11.2  p95   15.1  mediana   10.6
+  fotograma→dibujo (draw−frame)      n= 319  media  576.6  p95  688.7  mediana  577.1
+  periodo entre despachos            n= 377  media  231.3  p95  394.9  mediana  217.2  (informativo)
+
+Retardo del filtro (correlación cruzada sin filtrar vs. filtrada, tramo en movimiento):
+  ec03_bracelet_20261122_160330.csv: 132 ms (correlación 0.99)
+  ec03_bracelet_20261122_160448.csv: 141 ms (correlación 0.99)
+  ec03_bracelet_20261122_160602.csv: 142 ms (correlación 0.99)
+  media 139 ms (mín 132, máx 142)
+
+Suma estimada frente al objetivo de 250 ms (medias):
+  definición del SRS (detección + muestreo + filtro): 370 + 0 + 139 = 509 ms — NO CUMPLE ≤ 250 ms
+  con los demás tramos medidos (+ resultado→pose 206 + pose→dibujo 11): 726 ms — NO CUMPLE ≤ 250 ms
+  Sin la latencia del sensor a Dart ni la de la pantalla (no medibles por software).
+
+========================================================================
+Categoría: earring (android) — 3 corrida(s)
+========================================================================
+- ec03_earring_20261122_163155.csv: profile, detector raiz, emparejamiento id, tramos desde inicio de la medición, 435 poses en la ventana (868 en total), velocidad mediana del ancla filtrada: reposo 2 px/s, movimiento 14 px/s.
+- ec03_earring_20261122_163305.csv: profile, detector raiz, emparejamiento id, tramos desde inicio de la medición, 443 poses en la ventana (816 en total), velocidad mediana del ancla filtrada: reposo 1 px/s, movimiento 18 px/s.
+- ec03_earring_20261122_163403.csv: profile, detector raiz, emparejamiento id, tramos desde inicio de la medición, 452 poses en la ventana (821 en total), velocidad mediana del ancla filtrada: reposo 2 px/s, movimiento 18 px/s.
+
+RD-07 — error de anclaje (distancia filtrada vs. sin filtrar):
+  reposo      n= 411  media 0.2 px (0.7 px fís.)  p95 0.8 px (2.4)  máx 1.8 px (5.0)  CUMPLE con p95 ≤ 40 px
+  movimiento  n= 873  media 1.6 px (4.6 px fís.)  p95 3.3 px (9.3)  máx 5.0 px (14.0)  CUMPLE con p95 ≤ 40 px
+
+RD-02 — tramos de latencia (todas las poses de los dos tramos):
+  espera de muestreo (dispatch−frame) n=1330  media    0.0  p95    0.0  mediana    0.0
+  detección (result−dispatch)        n=1330  media   95.6  p95  128.9  mediana   96.5  (un valor por resultado)
+  resultado→pose (pose−result)       n=1330  media    0.1  p95    0.2  mediana    0.1
+  pose→dibujo (draw−pose)            n=1330  media   10.7  p95   21.5  mediana   10.0
+  fotograma→dibujo (draw−frame)      n=1330  media  106.3  p95  143.2  mediana  106.1
+  periodo entre despachos            n=1327  media   65.4  p95  108.7  mediana   58.6  (informativo)
+
+Retardo del filtro (correlación cruzada sin filtrar vs. filtrada, tramo en movimiento):
+  ec03_earring_20261122_163155.csv: 67 ms (correlación 1.00)
+  ec03_earring_20261122_163305.csv: 73 ms (correlación 1.00)
+  ec03_earring_20261122_163403.csv: 64 ms (correlación 1.00)
+  media 68 ms (mín 64, máx 73)
+
+Suma estimada frente al objetivo de 250 ms (medias):
+  definición del SRS (detección + muestreo + filtro): 96 + 0 + 68 = 164 ms — CUMPLE ≤ 250 ms
+  con los demás tramos medidos (+ resultado→pose 0 + pose→dibujo 11): 175 ms — CUMPLE ≤ 250 ms
+  Sin la latencia del sensor a Dart ni la de la pantalla (no medibles por software).
+
+Aretes en Android (malla facial):
+  actualizaciones de cabeza por segundo (resultados nuevos): 15.0, 15.3, 15.6 — media 15.3
+  poses publicadas por segundo: 15.0, 15.3, 15.6 — media 15.3
+  ms por detección (result−dispatch): media 95.6, p95 128.9
+
+Lo que NO incluye ninguna cifra de este reporte, porque no se puede medir por software desde Dart:
+- la latencia del sensor hasta Dart (exposición, ISP y entrega del fotograma al stream de la cámara);
+- la latencia de la pantalla (composición, presentación y barrido). t_draw es el fin del frame de Flutter que reconstruyó la escena; la textura 3D puede presentarse uno o dos vsync después.
