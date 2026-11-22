@@ -260,7 +260,7 @@ SPEC CHECKSUMS:
   FirebaseRemoteConfig: b496646b82855e174a7f1e354c65e0e913085168
   FirebaseRemoteConfigInterop: 1c6135e8a094cc6368949f5faeeca7ee8948b8aa
   FirebaseSharedSwift: e17c654ef1f1a616b0b33054e663ad1035c8fd40
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   flutter_angle: 68742dae62c908b37adc0300c1d09e56064d54b4
   FlutterAngle: c810891af800750361b1d0e7cc944f2338d5ae18
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e

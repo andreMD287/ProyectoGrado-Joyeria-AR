@@ -108,12 +108,13 @@ class _TryOnBodyState extends ConsumerState<_TryOnBody> {
   /// para evitarlo (revisado el puente nativo de
   /// `google_mlkit_pose_detection` y la capa EGL de `flutter_angle`).
   ///
-  /// Mientras no haya una alternativa viable (portar la sonda del antebrazo
-  /// a iOS con un lector BGRA, o reemplazar el detector de respaldo por algo
-  /// que no traiga MediaPipe adentro), se bloquea aquí antes de arrancar la
-  /// cámara: mejor un mensaje claro que tumbar toda la sesión del usuario.
-  bool get _necklaceBlockedOnIOS =>
-      Platform.isIOS && piece.categoria == JewelryCategory.necklace;
+  /// Spike en curso: se reemplazó el detector de respaldo (ML Kit Pose, que
+  /// crasheaba) por `NeckTrackingHandler` (Apple Vision + sonda de color para
+  /// la base del cuello, ver `ios/Runner/NeckTrackingHandler.swift`), así que
+  /// el bloqueo se desactiva para probarlo en dispositivo. Sin calibrar aún;
+  /// si la base del cuello sale inestable o mal ubicada, volver a poner
+  /// `Platform.isIOS && piece.categoria == JewelryCategory.necklace` aquí.
+  bool get _necklaceBlockedOnIOS => false;
 
   @override
   void initState() {
