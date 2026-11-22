@@ -66,8 +66,11 @@ LandmarkDetector createLandmarkDetector(DetectorKind kind) => switch (kind) {
         Platform.isIOS ? IosHandDetector() : AndroidHandDetector(),
       DetectorKind.face => FaceDetectorDataSource(),
       DetectorKind.pose => PoseDetectorDataSource(),
-      DetectorKind.neck =>
-        Platform.isAndroid ? NeckDetectorDataSource() : PoseDetectorDataSource(),
+      // Spike: en iOS iba a PoseDetectorDataSource (bloqueado antes de
+      // arrancar por _necklaceBlockedOnIOS, ver try_on_screen.dart) porque el
+      // respaldo anterior crasheaba. Ahora usa NeckTrackingHandler (Vision),
+      // con el mismo canal que NeckTracker en Android. Sin calibrar aun.
+      DetectorKind.neck => NeckDetectorDataSource(),
       DetectorKind.head => usesHeadMesh(kind)
           ? HeadDetectorDataSource()
           : FaceDetectorDataSource(),

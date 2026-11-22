@@ -4,6 +4,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var handTracking: HandTrackingHandler?
+  private var neckTracking: NeckTrackingHandler?
 
   override func application(
     _ application: UIApplication,
@@ -15,6 +16,8 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     handTracking = HandTrackingHandler(
+      messenger: engineBridge.applicationRegistrar.messenger())
+    neckTracking = NeckTrackingHandler(
       messenger: engineBridge.applicationRegistrar.messenger())
   }
 }
