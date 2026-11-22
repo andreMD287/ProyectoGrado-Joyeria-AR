@@ -9,6 +9,7 @@ import '../../../../core/math/geometry.dart';
 import '../../../../core/math/head_geometry.dart';
 import '../../../../core/isolate/detection_isolate.dart';
 import '../../../../core/isolate/detection_runner.dart';
+import '../../../../core/metrics/tracking_metrics.dart';
 import '../../../catalog/domain/entities/jewelry_category.dart';
 import '../../domain/entities/anchor_pose.dart';
 import '../../domain/entities/landmark_frame.dart';
@@ -285,6 +286,20 @@ class TrackingRepositoryImpl implements TrackingRepository {
             // Un resultado con error no debe cortar la sesión.
           }
         });
+        if (kMetrics) {
+          final kind = strategy.detectorKind;
+          await TrackingMetrics.instance.iniciarSesion(
+            categoria: category.name,
+            modoDetector: runsInRootIsolate(kind) ? 'raiz' : 'isolate',
+            emparejamiento: _results != null
+                ? 'id'
+                : requiresRootIsolate(kind)
+                    ? 'fifo'
+                    : kind == DetectorKind.neck
+                        ? 'ultimo'
+                        : 'directo',
+          );
+        }
         await cameraService.startStream(
           (frame) => _onFrame(frame, strategy, runner),
           lensDirection: _lensFor(category),
@@ -303,6 +318,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
     TrackingStrategy strategy,
     DetectionRunner runner,
   ) async {
+    final tFrame = kMetrics ? TrackingMetrics.instance.ahora() : 0.0;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_busy || now - _lastMs < _minIntervalMsFor(strategy.detectorKind)) {
       return;
@@ -314,9 +330,14 @@ class TrackingRepositoryImpl implements TrackingRepository {
           cameraService.controller?.description.sensorOrientation ?? 0;
       final aspect = uprightAspect(frame, orientation);
       _aspect = aspect;
+      if (kMetrics) {
+        TrackingMetrics.instance
+            .registrarDespacho(tFrame, TrackingMetrics.instance.ahora());
+      }
       final detection = await runner.detect(frame, orientation);
       // Lo detectado llega por su cuenta, por `_results`.
       if (_results != null) return;
+      if (kMetrics) TrackingMetrics.instance.resultadoDirecto();
       _onDetection(detection, strategy, aspect);
     } catch (_) {
       // Se descarta el frame con error para no interrumpir el stream.
@@ -356,6 +377,15 @@ class TrackingRepositoryImpl implements TrackingRepository {
       anchor: s,
       landmarks: detection.landmarks,
     ));
+    if (kMetrics) {
+      TrackingMetrics.instance.posePublicada(
+        s,
+        rawX: anchor.position.x,
+        rawY: anchor.position.y,
+        filtX: s.position.x,
+        filtY: s.position.y,
+      );
+    }
   }
 
   AnchorPose _smooth(AnchorPose anchor, double tSeconds) {
@@ -465,6 +495,7 @@ class TrackingRepositoryImpl implements TrackingRepository {
 
   @override
   Future<void> stop() async {
+    if (kMetrics) await TrackingMetrics.instance.cerrarSesion();
     await _results?.cancel();
     _results = null;
     _aspect = null;
