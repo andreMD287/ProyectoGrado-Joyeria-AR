@@ -48,6 +48,21 @@ class NeckTrackingHandler: NSObject {
     return r
   }()
   private var seq = 0
+  // Sexta version: con la sonda estable (cuarta version) y el collar ya del
+  // tamano correcto (quinta version), mirando hacia arriba o hacia abajo el
+  // ancho medido seguia saltando entre un valor angosto (~0.6-0.7 del ancho
+  // de cara) y uno ancho (~1.1-1.3) de un frame al otro, con el menton casi
+  // en la misma posicion (visto en dispositivo, 2026-11-24). La mancha mas
+  // ancha de la primera fila a veces se queda angosta y a veces se funde
+  // con la de al lado por un cambio minimo de iluminacion o ruido de
+  // camara, porque el umbral de cromaticidad (`tol`) es un corte duro sin
+  // margen. Se suaviza la posicion y el ancho ya corregidos con un
+  // promedio movil (EMA) entre frames, en vez de usar el valor crudo de
+  // cada frame tal cual. Se reinicia en cada `start` para no arrastrar la
+  // posicion de una sesion de camara a la siguiente.
+  private var smoothedLeftXPx: Double?
+  private var smoothedRightXPx: Double?
+  private var smoothedYPx: Double?
 
   init(messenger: FlutterBinaryMessenger) {
     super.init()
@@ -62,6 +77,9 @@ class NeckTrackingHandler: NSObject {
     switch call.method {
     case "start":
       seq = 0
+      smoothedLeftXPx = nil
+      smoothedRightXPx = nil
+      smoothedYPx = nil
       result(nil)
     case "stop":
       result(nil)
@@ -319,6 +337,50 @@ class NeckTrackingHandler: NSObject {
     let yEnd = min(height - 1, chinY + Int(windowScale * faceWidthPx))
     print("NECKPROBE: windowScale=\(windowScale)")
 
+    // Cuarta version: antes, la fila de arranque (la mas pegada al menton)
+    // se armaba agrandando desde el primer pixel de piel que se encontrara
+    // al alejarse de chinX por `d` creciente (izquierda y derecha
+    // alternado). Si el tono de piel justo bajo el menton quedaba partido
+    // en dos manchas separadas (p. ej. una sombra en el medio), cual de las
+    // dos se encontraba "primero" dependia de ruido de un frame a otro, y
+    // la base saltaba de lado a lado entre frames aunque cada uno
+    // individualmente saliera "ok" (visto en dispositivo, 2026-11-23: el
+    // centro alternaba entre ~x100-160 y ~x270-330 en el mismo tramo
+    // mirando al frente). Por eso solo la fila de arranque usa la mancha
+    // contigua mas ancha dentro del alcance, no la mas cercana a chinX: una
+    // mancha real de cuello casi siempre es mas ancha que un reflejo o
+    // ruido aislado al otro lado. Se probo usar esto en todas las filas
+    // (no solo la de arranque), pero eso le quita a la sonda la localidad
+    // fila a fila: deja de crecer de forma contigua desde donde venia y
+    // puede "teletransportarse" a cualquier mancha ancha dentro del
+    // alcance en cada fila, así que nunca encuentra una transicion real y
+    // siempre se queda sin ventana (visto en dispositivo, 2026-11-23: cero
+    // `ok base` en todo el log). Las filas siguientes vuelven al criterio
+    // original: el pixel mas cercano a la semilla, agrandado de forma
+    // contigua desde ahi.
+    func widestSkinRun(around seed: Int, row y: Int) -> (l: Int, r: Int)? {
+      let lo = max(0, seed - reach)
+      let hi = min(width - 1, seed + reach)
+      guard lo <= hi else { return nil }
+      var best: (l: Int, r: Int)? = nil
+      var runStart = -1
+      var x = lo
+      while x <= hi + 1 {
+        let skin = x <= hi && isSkin(x, y)
+        if skin {
+          if runStart < 0 { runStart = x }
+        } else if runStart >= 0 {
+          let runEnd = x - 1
+          if best == nil || (runEnd - runStart) > (best!.r - best!.l) {
+            best = (l: runStart, r: runEnd)
+          }
+          runStart = -1
+        }
+        x += 1
+      }
+      return best
+    }
+
     var seed = chinX
     var started = false
     var lastL = -1, lastR = -1, lastY = -1
@@ -334,27 +396,12 @@ class NeckTrackingHandler: NSObject {
 
     var y = yStart
     while y <= yEnd {
-      var x0 = -1
-      var d = 0
-      while d <= reach {
-        if seed - d >= 0, isSkin(seed - d, y) { x0 = seed - d; break }
-        if seed + d < width, isSkin(seed + d, y) { x0 = seed + d; break }
-        d += 1
-      }
-      if x0 < 0 {
-        if !started {
+      if !started {
+        guard let run = widestSkinRun(around: seed, row: y) else {
           y += 1
           continue
         }
-        break
-      }
-      var l = x0
-      while l > 0, isSkin(l - 1, y) { l -= 1 }
-      var r = x0
-      while r < width - 1, isSkin(r + 1, y) { r += 1 }
-      let rowWidth = Double(r - l + 1)
-
-      if !started {
+        let rowWidth = Double(run.r - run.l + 1)
         // No se arranca con un hilo de piel junto a la mandibula: la
         // semilla se iria hacia ese lado.
         if rowWidth < minRun {
@@ -363,13 +410,29 @@ class NeckTrackingHandler: NSObject {
         }
         firstWidth = rowWidth
         started = true
-        lastL = l
-        lastR = r
+        lastL = run.l
+        lastR = run.r
         lastY = y
-        seed = (l + r) / 2
+        seed = (run.l + run.r) / 2
         y += 1
         continue
       }
+
+      var x0 = -1
+      var d = 0
+      while d <= reach {
+        if seed - d >= 0, isSkin(seed - d, y) { x0 = seed - d; break }
+        if seed + d < width, isSkin(seed + d, y) { x0 = seed + d; break }
+        d += 1
+      }
+      if x0 < 0 {
+        break
+      }
+      var l = x0
+      while l > 0, isSkin(l - 1, y) { l -= 1 }
+      var r = x0
+      while r < width - 1, isSkin(r + 1, y) { r += 1 }
+      let rowWidth = Double(r - l + 1)
 
       if rowWidth > maxRowWidth || rowWidth > firstWidth * 1.8 {
         break
@@ -411,15 +474,52 @@ class NeckTrackingHandler: NSObject {
       "NECKPROBE: ok base=(\(lastL),\(lastY))-(\(lastR),\(lastY)) "
         + "ancho=\(baseWidthFrac)")
 
+    // Quinta version: con la sonda ya estable (cuarta version), el collar se
+    // veia bien anclado pero chico en pantalla (visto en dispositivo,
+    // 2026-11-24: anchos estables de 0.65-0.70 del ancho de cara mirando al
+    // frente, mas angostos que los 0.9-1.3 que se veian antes de la cuarta
+    // version). La piel visible del cuello (sin la quijada, el pelo o una
+    // sombra encima) probablemente es mas angosta que el contorno real del
+    // cuello donde se apoya el collar. Se ensancha el tramo medido
+    // manteniendo el mismo centro, antes de devolverlo: la posicion
+    // (frontX/frontY) no cambia, solo el ancho que alimenta la escala del
+    // collar en Dart (`necklace_strategy.dart`). Factor de primera
+    // estimacion, sin calibrar del todo, pendiente de confirmar que tamano
+    // se ve bien en dispositivo.
+    let sizeCorrection = 1.3
+    let center = Double(lastL + lastR) / 2.0
+    let halfWidthPx = Double(lastR - lastL + 1) / 2.0 * sizeCorrection
+    let correctedL = center - halfWidthPx
+    let correctedR = center + halfWidthPx
+
+    // Sexta version: promedio movil (EMA) sobre la posicion ya corregida,
+    // para no pasar de frame a frame el salto angosto/ancho descrito mas
+    // arriba. `emaAlpha` de primera estimacion: mas chico suaviza mas pero
+    // atrasa mas el seguimiento cuando la cabeza se mueve de verdad (al
+    // mirar arriba/abajo), sin calibrar del todo.
+    let emaAlpha = 0.25
+    func ema(_ previous: Double?, _ current: Double) -> Double {
+      guard let previous = previous else { return current }
+      return previous + emaAlpha * (current - previous)
+    }
+    let smoothedL = ema(smoothedLeftXPx, correctedL)
+    let smoothedR = ema(smoothedRightXPx, correctedR)
+    let smoothedY = ema(smoothedYPx, Double(lastY))
+    smoothedLeftXPx = smoothedL
+    smoothedRightXPx = smoothedR
+    smoothedYPx = smoothedY
+    let smoothedWidthFrac =
+      (smoothedR - smoothedL) / Double(width) / faceWidth
+
     return [
-      "leftX": Double(lastL) / Double(width),
-      "leftY": Double(lastY) / Double(height),
-      "rightX": Double(lastR + 1) / Double(width),
-      "rightY": Double(lastY) / Double(height),
+      "leftX": smoothedL / Double(width),
+      "leftY": smoothedY / Double(height),
+      "rightX": smoothedR / Double(width),
+      "rightY": smoothedY / Double(height),
       "hasFront": false,
-      "frontX": Double(lastL + lastR + 1) / 2.0 / Double(width),
-      "frontY": Double(lastY) / Double(height),
-      "narrow": baseWidthFrac,
+      "frontX": (smoothedL + smoothedR) / 2.0 / Double(width),
+      "frontY": smoothedY / Double(height),
+      "narrow": smoothedWidthFrac,
       "columnX": -1.0,
       "refChinX": chin.x,
       "refChinY": chin.y,
