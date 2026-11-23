@@ -18,6 +18,7 @@ LandmarkFrame hand({
   required (double, double) pinkyMcp,
   (double, double)? thumbTip,
   ({Vec3 wrist, Vec3 indexMcp, Vec3 pinkyMcp})? world,
+  bool? manoIzquierda,
 }) {
   final points = List<Landmark>.filled(21, const Landmark(0, 0, 0));
   points[BraceletStrategy.wristLandmark] = Landmark(wrist.$1, wrist.$2, 0);
@@ -37,7 +38,11 @@ LandmarkFrame hand({
     metricos[BraceletStrategy.pinkyMcpLandmark] = world.pinkyMcp;
   }
 
-  return LandmarkFrame(landmarks: points, worldLandmarks: metricos);
+  return LandmarkFrame(
+    landmarks: points,
+    worldLandmarks: metricos,
+    manoIzquierda: manoIzquierda,
+  );
 }
 
 void main() {
@@ -709,6 +714,92 @@ void main() {
       );
       final p = strategy.computeAnchor(conBrazo(raro))!;
       expect(p.limbWidth, closeTo(0.22, 1e-9));
+    });
+  });
+
+  group('mano izquierda', () {
+    // Mano derecha con la palma inclinada (normal no paralela a ningun eje),
+    // y la izquierda como su reflejo en x, que es lo que es anatomicamente.
+    const der = (
+      wrist: Vec3(0, 0.09, 0.003),
+      indexMcp: Vec3(-0.02, 0, 0.01),
+      pinkyMcp: Vec3(0.02, 0, -0.005),
+    );
+    final izq = (
+      wrist: Vec3(-der.wrist.x, der.wrist.y, der.wrist.z),
+      indexMcp: Vec3(-der.indexMcp.x, der.indexMcp.y, der.indexMcp.z),
+      pinkyMcp: Vec3(-der.pinkyMcp.x, der.pinkyMcp.y, der.pinkyMcp.z),
+    );
+    LandmarkFrame derecha({bool? etiqueta = false}) => hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.4, 0.4),
+          pinkyMcp: (0.6, 0.4),
+          world: der,
+          manoIzquierda: etiqueta,
+        );
+    LandmarkFrame izquierda({bool? etiqueta = true}) => hand(
+          wrist: (0.5, 0.6),
+          indexMcp: (0.6, 0.4),
+          pinkyMcp: (0.4, 0.4),
+          world: izq,
+          manoIzquierda: etiqueta,
+        );
+
+    test('la normal de la izquierda es la de la derecha en espejo', () {
+      final nDer = strategy.computeAnchor(derecha())!.palmNormal3D!;
+      final nIzq = BraceletStrategy().computeAnchor(izquierda())!.palmNormal3D!;
+
+      // Reflejar en x la normal del dorso de la derecha da la del dorso de la
+      // izquierda: el detalle de la pulsera queda arriba en las dos.
+      expect(nIzq.x, closeTo(-nDer.x, 1e-9));
+      expect(nIzq.y, closeTo(nDer.y, 1e-9));
+      expect(nIzq.z, closeTo(nDer.z, 1e-9));
+    });
+
+    test('sin saber que es la izquierda, la normal sale invertida', () {
+      final nDer = strategy.computeAnchor(derecha())!.palmNormal3D!;
+      final nSin = BraceletStrategy()
+          .computeAnchor(izquierda(etiqueta: null))!
+          .palmNormal3D!;
+
+      // El error que se veia en dispositivo: el producto vectorial de la mano
+      // reflejada apunta a la palma.
+      expect(nSin.x, closeTo(nDer.x, 1e-9));
+      expect(nSin.y, closeTo(-nDer.y, 1e-9));
+      expect(nSin.z, closeTo(-nDer.z, 1e-9));
+    });
+
+    test('una etiqueta suelta de la otra mano no voltea la pulsera', () {
+      final base = strategy.computeAnchor(derecha())!.palmNormal3D!;
+      final tras = strategy
+          .computeAnchor(derecha(etiqueta: true))!
+          .palmNormal3D!;
+
+      expect(tras.z, closeTo(base.z, 1e-9));
+    });
+
+    test('la otra mano sostenida 5 frames si se acepta', () {
+      final base = strategy.computeAnchor(derecha())!.palmNormal3D!;
+      Vec3? ultima;
+      for (var k = 0; k < 5; k++) {
+        ultima = strategy.computeAnchor(derecha(etiqueta: true))!.palmNormal3D;
+      }
+
+      expect(ultima!.z, closeTo(-base.z, 1e-9));
+    });
+
+    test('al perder la mano, la siguiente etiqueta vale enseguida', () {
+      strategy.computeAnchor(derecha());
+      for (var k = 0; k < 3; k++) {
+        strategy.computeAnchor(
+          LandmarkFrame(landmarks: List.filled(10, const Landmark(0, 0, 0))),
+        );
+      }
+      final nIzq = strategy.computeAnchor(izquierda())!.palmNormal3D!;
+      final esperada =
+          BraceletStrategy().computeAnchor(izquierda())!.palmNormal3D!;
+
+      expect(nIzq.z, closeTo(esperada.z, 1e-9));
     });
   });
 }

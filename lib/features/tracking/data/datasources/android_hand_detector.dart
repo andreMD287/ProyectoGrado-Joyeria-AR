@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hand_landmarker/hand_landmarker.dart' as hl;
 
 import '../../../../core/math/geometry.dart';
@@ -88,6 +89,7 @@ class AndroidHandDetector implements LandmarkDetector {
 
     final hand = hands.first;
     _latest = LandmarkFrame(
+      manoIzquierda: manoIzquierdaDe(hand.handedness, hand.handednessScore),
       landmarks: [
         for (final lm in hand.landmarks) _toUpright(lm, _orientation),
       ],
@@ -132,6 +134,7 @@ class AndroidHandDetector implements LandmarkDetector {
     return LandmarkFrame(
       landmarks: latest.landmarks,
       worldLandmarks: latest.worldLandmarks,
+      manoIzquierda: latest.manoIzquierda,
       forearm: probeForearm(
         landmarks: latest.landmarks,
         sample: sampler,
@@ -170,6 +173,31 @@ class AndroidHandDetector implements LandmarkDetector {
       return Yuv(yP.bytes[yi], uP.bytes[ui], vP.bytes[vi]);
     };
   }
+
+  /// Mano de la persona a partir de la etiqueta de MediaPipe (`"Left"` o
+  /// `"Right"`) y su confianza.
+  ///
+  /// Con la cámara trasera la etiqueta nombra directamente la mano de la
+  /// persona: verificado en el Galaxy A15 (2026-11-22), la derecha salió
+  /// `"Right"` (0,96) y la izquierda `"Left"` (0,998). La documentación de
+  /// MediaPipe dice que supone una imagen espejada; aquí no hace falta
+  /// invertirla.
+  ///
+  /// Mientras la mano entra o sale del cuadro la etiqueta alterna con poca
+  /// confianza (0,53–0,71 en la misma prueba): por debajo de
+  /// [_confianzaMinimaMano] se descarta y la estrategia sigue con la mano que
+  /// tenía.
+  @visibleForTesting
+  static bool? manoIzquierdaDe(String? etiqueta, double? confianza) {
+    if (confianza != null && confianza < _confianzaMinimaMano) return null;
+    return switch (etiqueta) {
+      'Left' => true,
+      'Right' => false,
+      _ => null,
+    };
+  }
+
+  static const double _confianzaMinimaMano = 0.8;
 
   static Landmark _toUpright(hl.Landmark lm, int sensorOrientation) {
     final p = rotateNormalizedToUpright(

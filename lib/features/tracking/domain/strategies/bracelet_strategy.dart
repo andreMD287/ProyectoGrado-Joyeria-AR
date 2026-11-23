@@ -90,6 +90,17 @@ class BraceletStrategy implements TrackingStrategy {
   int _missedFrames = 0;
   static const int _missFramesBeforeRecalibrate = 3;
 
+  /// Mano en uso, para orientar la normal de la palma (ver
+  /// [_fromWorldLandmarks]). La primera etiqueta de cada aparición de la mano
+  /// se acepta enseguida; después, la contraria tiene que sostenerse
+  /// [_framesParaCambiarMano] frames seguidos, para que un fotograma mal
+  /// clasificado no voltee la pulsera. Al perder la mano se olvida: puede
+  /// volver la otra.
+  bool _izquierda = false;
+  bool _manoConocida = false;
+  int _framesOtraMano = 0;
+  static const int _framesParaCambiarMano = 5;
+
   /// Corrección del eje de la mano hacia el antebrazo real, vista en la
   /// imagen (ver [ForearmObservation]): giro en radianes y desplazamiento
   /// lateral en anchos de palma.
@@ -161,6 +172,26 @@ class BraceletStrategy implements TrackingStrategy {
     _laterals.clear();
     _limbRatios.clear();
     _framesSinForearm = _holdForearmFrames;
+    _izquierda = false;
+    _manoConocida = false;
+    _framesOtraMano = 0;
+  }
+
+  /// La mano con histéresis (ver [_izquierda]). Sin etiqueta del detector se
+  /// sigue con la que había, o la derecha.
+  bool _resolverMano(bool? observada) {
+    if (observada == null) return _izquierda;
+    if (!_manoConocida) {
+      _izquierda = observada;
+      _manoConocida = true;
+      _framesOtraMano = 0;
+    } else if (observada == _izquierda) {
+      _framesOtraMano = 0;
+    } else if (++_framesOtraMano >= _framesParaCambiarMano) {
+      _izquierda = observada;
+      _framesOtraMano = 0;
+    }
+    return _izquierda;
   }
 
   @override
@@ -211,8 +242,10 @@ class BraceletStrategy implements TrackingStrategy {
     // fuera el primero de la sesión.
     if (_missedFrames >= _missFramesBeforeRecalibrate) {
       _maxWidthToAxisRatio = 0;
+      _manoConocida = false;
     }
     _missedFrames = 0;
+    final izquierda = _resolverMano(frame.manoIzquierda);
 
     // El desplazamiento se hace en espacio normalizado: escalar un vector
     // normalizado equivale a escalar su versión en píxeles, así que aquí no
@@ -246,7 +279,8 @@ class BraceletStrategy implements TrackingStrategy {
       wrist.z + axisZ * forearmOffset,
     );
 
-    final metrico = _fromWorldLandmarks(frame.worldLandmarks);
+    final metrico =
+        _fromWorldLandmarks(frame.worldLandmarks, izquierda: izquierda);
 
     // El yaw se calcula antes que el tamano: actualiza _maxWidthToAxisRatio,
     // del que el tamano estable depende cuando no hay datos metricos.
@@ -386,8 +420,9 @@ class BraceletStrategy implements TrackingStrategy {
   /// que no sea MediaPipe manos en Android).
   ({Vec3 axis, Vec3 normal, double palmWidth, double widthToAxis})?
       _fromWorldLandmarks(
-    List<Vec3> world,
-  ) {
+    List<Vec3> world, {
+    bool izquierda = false,
+  }) {
     if (world.length <= pinkyMcpLandmark) return null;
 
     final wrist = world[wristLandmark];
@@ -452,9 +487,15 @@ class BraceletStrategy implements TrackingStrategy {
     final nLargo = math.sqrt(nx * nx + ny * ny + nz * nz);
     if (nLargo <= 0) return null;
 
+    // La mano izquierda es el reflejo de la derecha: el mismo producto
+    // vectorial apunta al lado contrario, y la pulsera quedaba con el detalle
+    // del lado de la palma (visto en dispositivo, 2026-11-22). El render está
+    // ajustado con la derecha, así que en la izquierda se invierte.
+    final signo = izquierda ? -nLargo : nLargo;
+
     return (
       axis: Vec3(x / renorm, y / renorm, z / renorm),
-      normal: Vec3(nx / nLargo, ny / nLargo, nz / nLargo),
+      normal: Vec3(nx / signo, ny / signo, nz / signo),
       palmWidth: ancho,
       // Proporcion anatomica del usuario, medida entre dos distancias reales:
       // no se escorza, porque un cociente de distancias 3D no depende de como
