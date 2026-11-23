@@ -49,6 +49,13 @@ class LandmarkFrame {
   /// iOS los aretes siguen con ML Kit Face.
   final HeadObservation? head;
 
+  /// `true` si la mano detectada es la **izquierda de la persona**, `false` si
+  /// es la derecha, `null` si el detector no lo informa (hoy solo lo da
+  /// MediaPipe manos en Android). La izquierda es el reflejo de la derecha, y
+  /// todo lo que se calcule con un producto vectorial entre sus puntos (la
+  /// normal de la palma) sale con el signo contrario.
+  final bool? manoIzquierda;
+
   const LandmarkFrame({
     this.landmarks = const [],
     this.worldLandmarks = const [],
@@ -56,6 +63,7 @@ class LandmarkFrame {
     this.headEulerAnglesDeg,
     this.neck,
     this.head,
+    this.manoIzquierda,
   });
 
   static const empty = LandmarkFrame();
