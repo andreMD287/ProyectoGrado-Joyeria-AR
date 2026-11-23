@@ -154,6 +154,10 @@ class BraceletStrategy implements TrackingStrategy {
   /// [_fromWorldLandmarks]: es la senal menos fiable del detector.
   static const double _depthDamping = 0.25;
 
+  /// Cuánto se conserva de la profundidad al calcular la normal de la palma.
+  /// Menos que en el eje: ver [_fromWorldLandmarks].
+  static const double _normalDepthDamping = 0.1;
+
   @override
   JewelryCategory get category => JewelryCategory.bracelet;
 
@@ -471,15 +475,26 @@ class BraceletStrategy implements TrackingStrategy {
     // Normal del plano de la palma: perpendicular a los dos vectores que van
     // de la muñeca a cada nudillo. Es lo que dice si la palma mira arriba o
     // abajo, que el eje del antebrazo por si solo no distingue.
+    //
+    // La profundidad se amortigua mucho más que en el eje
+    // ([_normalDepthDamping]). Medido en dispositivo (2026-11-22) con las dos
+    // manos planas sobre la mesa: en la izquierda MediaPipe ponía el nudillo
+    // del índice 3 cm más cerca de la cámara que el del meñique (1,2 cm en la
+    // derecha), como si la mano estuviera girada 50–70°, y la pulsera dejaba
+    // el detalle de costado: a ~45° de arriba sin amortiguar y a ~30° con el
+    // mismo 0,25 del eje, mientras en la derecha quedaba centrado. Así la
+    // normal sale casi solo de la imagen, que es igual de fiable con las dos
+    // manos. La muñeca de canto sigue girando la pieza del todo; en los giros
+    // intermedios la sigue menos.
     final v1 = Vec3(
       indexMcp.x - wrist.x,
       indexMcp.y - wrist.y,
-      indexMcp.z - wrist.z,
+      (indexMcp.z - wrist.z) * _normalDepthDamping,
     );
     final v2 = Vec3(
       pinkyMcp.x - wrist.x,
       pinkyMcp.y - wrist.y,
-      pinkyMcp.z - wrist.z,
+      (pinkyMcp.z - wrist.z) * _normalDepthDamping,
     );
     final nx = v1.y * v2.z - v1.z * v2.y;
     final ny = v1.z * v2.x - v1.x * v2.z;
